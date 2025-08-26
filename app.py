@@ -368,6 +368,11 @@ async def get_performance_dashboard():
     """성능 모니터링 대시보드 페이지를 제공합니다"""
     return FileResponse("performance/performance_dashboard.html")
 
+@app.get("/performance_dashboard")
+async def get_performance_dashboard_alt():
+    """성능 모니터링 대시보드 페이지를 제공합니다 (대체 경로)"""
+    return FileResponse("performance/performance_dashboard.html")
+
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
@@ -891,7 +896,7 @@ def advanced_search(query: str, user_id: str = None, algorithm: str = None):
 def get_search_insights():
     """고급 검색 시스템의 성능 인사이트를 제공합니다"""
     try:
-        insights = get_search_insights()
+        insights = advanced_search_engine.get_performance_insights()
         return {
             "status": "success",
             "insights": insights,
