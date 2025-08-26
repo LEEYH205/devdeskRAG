@@ -17,6 +17,7 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_together import TogetherEmbeddings  # exaone 임베딩 추가
 from langchain_core.documents import Document
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class DocumentProcessor:
         self.data_dir = data_dir
         self.db_dir = db_dir
         self.embed_model = embed_model
+        self.embed_mode = os.getenv("EMBED_MODE", "huggingface")  # 'huggingface' | 'together'
         self.chunk_size = int(os.getenv("CHUNK_SIZE", "800"))
         self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "120"))
         
@@ -43,11 +45,26 @@ class DocumentProcessor:
                 logger.info("Initializing document processor...")
                 
                 # 임베딩 모델 초기화
-                self.embed = HuggingFaceEmbeddings(
-                    model_name=self.embed_model,
-                    model_kwargs={'device': 'cpu'},
-                    encode_kwargs={'normalize_embeddings': True}
-                )
+                if self.embed_mode == "together":
+                    together_api_key = os.getenv("TOGETHER_API_KEY")
+                    if not together_api_key:
+                        logger.warning("TOGETHER_API_KEY not found, falling back to HuggingFace")
+                        self.embed_mode = "huggingface"
+                    
+                    if self.embed_mode == "together":
+                        self.embed = TogetherEmbeddings(
+                            model="lgai/exaone-deep-32b",
+                            together_api_key=together_api_key
+                        )
+                        logger.info("Using Together API with exaone embedding model")
+                
+                if self.embed_mode == "huggingface":
+                    self.embed = HuggingFaceEmbeddings(
+                        model_name=self.embed_model,
+                        model_kwargs={'device': 'cpu'},
+                        encode_kwargs={'normalize_embeddings': True}
+                    )
+                    logger.info(f"Using HuggingFace embedding model: {self.embed_model}")
                 
                 # 벡터 스토어 초기화
                 if os.path.exists(self.db_dir):

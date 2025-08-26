@@ -19,6 +19,7 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_together import ChatTogether
+from langchain_together import TogetherEmbeddings  # exaone 임베딩 추가
 
 # 채팅 히스토리 모듈 import
 from chat_history import ChatHistoryManager
@@ -36,6 +37,7 @@ DB_DIR = os.getenv("CHROMA_DIR", "chroma_db")
 DATA_DIR = os.getenv("DATA_DIR", "data")
 MODE = os.getenv("MODE", "ollama")  # 'ollama' | 'together'
 EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
+EMBED_MODE = os.getenv("EMBED_MODE", "huggingface")  # 'huggingface' | 'together'
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 # 성능 최적화 설정
@@ -70,11 +72,25 @@ def initialize_components():
     try:
         # 임베딩 모델 초기화
         logger.info("Initializing embedding model...")
-        embed = HuggingFaceEmbeddings(
-            model_name=EMBED_MODEL,
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
-        )
+        if EMBED_MODE == "together":
+            together_api_key = os.getenv("TOGETHER_API_KEY")
+            if not together_api_key:
+                raise ValueError("TOGETHER_API_KEY environment variable is required for Together embedding mode")
+            
+            # exaone 임베딩 모델 사용
+            embed = TogetherEmbeddings(
+                model="lgai/exaone-deep-32b",
+                together_api_key=together_api_key
+            )
+            logger.info("Using Together API with exaone embedding model")
+        else:
+            # 기존 HuggingFace 임베딩 모델 사용
+            embed = HuggingFaceEmbeddings(
+                model_name=EMBED_MODEL,
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            logger.info(f"Using HuggingFace embedding model: {EMBED_MODEL}")
         
         # 벡터 스토어 초기화
         logger.info("Initializing vector store...")

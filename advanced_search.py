@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 from langchain_community.retrievers import BM25Retriever
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_together import ChatTogether
+from langchain_together import ChatTogether, TogetherEmbeddings  # exaone 임베딩 추가
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class AdvancedRetriever:
     
     def __init__(self, 
                  vector_store: Chroma,
-                 embedding_model: HuggingFaceEmbeddings,
+                 embedding_model: HuggingFaceEmbeddings = None,
                  together_api_key: str = None,
                  search_k: int = 8,
                  rerank_k: int = 4):

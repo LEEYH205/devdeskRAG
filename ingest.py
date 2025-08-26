@@ -5,6 +5,7 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_together import TogetherEmbeddings  # exaone 임베딩 추가
 from langchain_core.documents import Document
 from dotenv import load_dotenv
 import time
@@ -14,6 +15,7 @@ load_dotenv()
 DATA_DIR = "data"
 DB_DIR = os.getenv("CHROMA_DIR", "chroma_db")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
+EMBED_MODE = os.getenv("EMBED_MODE", "huggingface")  # 'huggingface' | 'together'
 
 # 성능 최적화 설정
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
@@ -87,15 +89,29 @@ if __name__ == "__main__":
     print(f"[INFO] Created {len(chunks)} chunks in {split_time:.2f}s")
     
     # 임베딩 모델 로드 및 벡터DB 생성 (성능 측정)
-    print(f"\n3. Building embeddings with {EMBED_MODEL}...")
+    print(f"\n3. Building embeddings with {EMBED_MODE} mode...")
     embed_start = time.time()
     
     try:
-        embed = HuggingFaceEmbeddings(
-            model_name=EMBED_MODEL,
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
-        )
+        if EMBED_MODE == "together":
+            together_api_key = os.getenv("TOGETHER_API_KEY")
+            if not together_api_key:
+                raise ValueError("TOGETHER_API_KEY environment variable is required for Together embedding mode")
+            
+            # exaone 임베딩 모델 사용
+            embed = TogetherEmbeddings(
+                model="lgai/exaone-deep-32b",
+                together_api_key=together_api_key
+            )
+            print(f"Using Together API with exaone embedding model")
+        else:
+            # 기존 HuggingFace 임베딩 모델 사용
+            embed = HuggingFaceEmbeddings(
+                model_name=EMBED_MODEL,
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            print(f"Using HuggingFace embedding model: {EMBED_MODEL}")
         
         vs = Chroma.from_documents(chunks, embed, persist_directory=DB_DIR)
         vs.persist()
