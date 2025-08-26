@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 import logging
 import uuid
 import json
+import numpy as np
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -138,6 +139,40 @@ def initialize_components():
         logger.info("Initializing document processor...")
         doc_processor = DocumentProcessor(data_dir=DATA_DIR, db_dir=DB_DIR, embed_model=EMBED_MODEL)
         doc_processor.initialize()
+        
+        # 고급 검색 엔진 초기화
+        logger.info("Initializing advanced search engine...")
+        try:
+            # BM25 리트리버 생성 (간단한 구현)
+            from langchain_community.retrievers import BM25Retriever
+            from langchain_core.documents import Document
+            
+            # 기존 문서들을 BM25용으로 변환
+            all_docs = []
+            if vs:
+                collection = vs._collection
+                results = collection.get()
+                if results and results['documents']:
+                    for i, doc_content in enumerate(results['documents']):
+                        metadata = results['metadatas'][i] if results['metadatas'] else {}
+                        all_docs.append(Document(
+                            page_content=doc_content,
+                            metadata=metadata
+                        ))
+            
+            bm25_retriever = BM25Retriever.from_documents(all_docs) if all_docs else None
+            
+            # 고급 검색 엔진 초기화
+            advanced_search_engine.initialize_search_system(
+                vector_store=vs,
+                retriever=retriever,
+                embedding_model=embed,
+                bm25_retriever=bm25_retriever
+            )
+            logger.info("Advanced search engine initialized successfully")
+        except Exception as e:
+            logger.warning(f"Advanced search engine initialization failed: {e}")
+            logger.info("Continuing with basic search functionality")
         
         logger.info("All components initialized successfully")
         return True
@@ -946,6 +981,156 @@ def create_search_experiment(experiment_data: dict):
     except Exception as e:
         logger.error(f"A/B 테스트 실험 생성 실패: {e}")
         raise HTTPException(status_code=500, detail=f"A/B 테스트 실험 생성 실패: {str(e)}")
+
+# ===== Phase 2.1: 하이브리드 검색 강화 API 엔드포인트 =====
+
+@app.get("/search/hybrid")
+def hybrid_search(query: str, user_id: str = None, domain: str = None):
+    """도메인별 가중치를 적용한 하이브리드 검색을 실행합니다"""
+    try:
+        # 도메인 자동 분류 (사용자가 지정하지 않은 경우)
+        if not domain:
+            domain = advanced_search_engine.classify_query_domain(query)
+        
+        # 도메인별 가중치 조회
+        domain_weights = advanced_search_engine.get_domain_weights(domain)
+        
+        # 하이브리드 검색 실행
+        results = advanced_search_engine.search(
+            query=query,
+            user_id=user_id or "anonymous",
+            algorithm="weighted_hybrid"
+        )
+        
+        return {
+            "status": "success",
+            "query": query,
+            "domain": domain,
+            "domain_weights": domain_weights,
+            "algorithm": "weighted_hybrid",
+            "results": [r.to_dict() for r in results],
+            "count": len(results),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"하이브리드 검색 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"하이브리드 검색 실패: {str(e)}")
+
+@app.get("/search/domain-analysis")
+def analyze_query_domain(query: str):
+    """쿼리의 도메인을 분석하고 적절한 검색 전략을 제안합니다"""
+    try:
+        domain = advanced_search_engine.classify_query_domain(query)
+        domain_weights = advanced_search_engine.get_domain_weights(domain)
+        
+        # 도메인별 검색 전략 제안
+        strategy_suggestions = {
+            'technical': {
+                'description': '기술적 질문 - 벡터 검색에 높은 가중치',
+                'recommended_algorithm': 'weighted_hybrid',
+                'optimization_tips': ['정확한 용어 사용', '코드 예시 포함', 'API 문서 참조']
+            },
+            'general': {
+                'description': '일반적 질문 - 균형잡힌 하이브리드 검색',
+                'recommended_algorithm': 'hybrid',
+                'optimization_tips': ['명확한 질문 작성', '구체적인 예시 요청']
+            },
+            'code': {
+                'description': '코드 관련 질문 - 벡터 검색과 키워드 검색 병합',
+                'recommended_algorithm': 'weighted_hybrid',
+                'optimization_tips': ['에러 메시지 포함', '프로그래밍 언어 명시', '코드 블록 사용']
+            }
+        }
+        
+        return {
+            "status": "success",
+            "query": query,
+            "detected_domain": domain,
+            "domain_weights": domain_weights,
+            "strategy": strategy_suggestions.get(domain, strategy_suggestions['general']),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"도메인 분석 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"도메인 분석 실패: {str(e)}")
+
+@app.get("/search/quality-metrics")
+def get_search_quality_metrics(query: str = None, algorithm: str = None, limit: int = 100):
+    """검색 품질 메트릭을 제공합니다"""
+    try:
+        if not advanced_search_engine.search_metrics_history:
+            return {
+                "status": "success",
+                "message": "아직 검색 메트릭이 수집되지 않았습니다",
+                "metrics": {},
+                "timestamp": time.time()
+            }
+        
+        # 필터링된 메트릭 수집
+        filtered_metrics = []
+        for metric in advanced_search_engine.search_metrics_history:
+            if query and query.lower() not in metric.query.lower():
+                continue
+            if algorithm and metric.algorithm != algorithm:
+                continue
+            filtered_metrics.append(metric)
+        
+        # 최근 N개로 제한
+        recent_metrics = filtered_metrics[-limit:] if filtered_metrics else []
+        
+        if not recent_metrics:
+            return {
+                "status": "success",
+                "message": "조건에 맞는 메트릭이 없습니다",
+                "metrics": {},
+                "timestamp": time.time()
+            }
+        
+        # 품질 메트릭 계산
+        avg_search_time = np.mean([m.search_time for m in recent_metrics])
+        avg_results_count = np.mean([m.results_count for m in recent_metrics])
+        avg_score = np.mean([m.avg_score for m in recent_metrics])
+        
+        # 알고리즘별 성능 비교
+        algorithm_performance = {}
+        for metric in recent_metrics:
+            if metric.algorithm not in algorithm_performance:
+                algorithm_performance[metric.algorithm] = {
+                    'count': 0,
+                    'avg_search_time': 0,
+                    'avg_results_count': 0,
+                    'avg_score': 0
+                }
+            
+            algo_perf = algorithm_performance[metric.algorithm]
+            algo_perf['count'] += 1
+            algo_perf['avg_search_time'] += metric.search_time
+            algo_perf['avg_results_count'] += metric.results_count
+            algo_perf['avg_score'] += metric.avg_score
+        
+        # 평균 계산
+        for algo_perf in algorithm_performance.values():
+            if algo_perf['count'] > 0:
+                algo_perf['avg_search_time'] /= algo_perf['count']
+                algo_perf['avg_results_count'] /= algo_perf['count']
+                algo_perf['avg_score'] /= algo_perf['count']
+        
+        return {
+            "status": "success",
+            "query_filter": query,
+            "algorithm_filter": algorithm,
+            "total_metrics": len(recent_metrics),
+            "overall_performance": {
+                "avg_search_time": round(avg_search_time, 3),
+                "avg_results_count": round(avg_results_count, 3),
+                "avg_score": round(avg_score, 3)
+            },
+            "algorithm_performance": algorithm_performance,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"검색 품질 메트릭 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"검색 품질 메트릭 조회 실패: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

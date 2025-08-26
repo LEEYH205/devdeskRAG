@@ -395,6 +395,20 @@
             </div>
         </div>
 
+        <!-- Phase 2.1: 하이브리드 검색 강화 -->
+        <div class="card">
+            <h3>🌐 Phase 2.1: 하이브리드 검색 강화</h3>
+            <div class="hybrid-search-controls" style="margin-bottom: 20px;">
+                <button class="btn btn-primary" onclick="testHybridSearch()">🔍 하이브리드 검색 테스트</button>
+                <button class="btn btn-secondary" onclick="analyzeQueryDomain()">🎯 도메인 분석</button>
+                <button class="btn btn-info" onclick="getQualityMetrics()">📊 품질 메트릭</button>
+            </div>
+            <div id="hybrid-search-results"
+                style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; min-height: 100px;">
+                <div class="text-muted">하이브리드 검색 기능을 테스트해보세요</div>
+            </div>
+        </div>
+
         <!-- 성능 병목 분석 -->
         <div class="card">
             <h3>🚨 성능 병목 분석</h3>
@@ -743,6 +757,115 @@
                 clearInterval(refreshInterval);
             }
         });
+
+        // ===== Phase 2.1: 하이브리드 검색 강화 함수들 =====
+
+        // 하이브리드 검색 테스트
+        async function testHybridSearch() {
+            const query = prompt('테스트할 검색어를 입력하세요:', 'DevDesk-RAG 시스템의 성능은 어떨까요?');
+            if (!query) return;
+
+            try {
+                const response = await fetch(`/search/hybrid?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const resultsDiv = document.getElementById('hybrid-search-results');
+                    resultsDiv.innerHTML = `
+                        <h4>🔍 하이브리드 검색 결과</h4>
+                        <p><strong>쿼리:</strong> ${data.query}</p>
+                        <p><strong>도메인:</strong> ${data.domain}</p>
+                        <p><strong>가중치:</strong> 벡터(${data.domain_weights.vector}), BM25(${data.domain_weights.bm25})</p>
+                        <p><strong>결과 수:</strong> ${data.count}개</p>
+                        <div style="margin-top: 10px;">
+                            <strong>상위 결과:</strong>
+                            <ul style="margin-top: 5px;">
+                                ${data.results.slice(0, 3).map((r, i) =>
+                        `<li>${i + 1}. ${r.content.substring(0, 100)}... (점수: ${r.score.toFixed(3)})</li>`
+                    ).join('')}
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    showError('하이브리드 검색에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('하이브리드 검색 테스트 실패:', error);
+                showError('하이브리드 검색 테스트에 실패했습니다.');
+            }
+        }
+
+        // 도메인 분석
+        async function analyzeQueryDomain() {
+            const query = prompt('분석할 쿼리를 입력하세요:', 'API 성능 최적화 방법');
+            if (!query) return;
+
+            try {
+                const response = await fetch(`/search/domain-analysis?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const resultsDiv = document.getElementById('hybrid-search-results');
+                    resultsDiv.innerHTML = `
+                        <h4>🎯 도메인 분석 결과</h4>
+                        <p><strong>쿼리:</strong> ${data.query}</p>
+                        <p><strong>감지된 도메인:</strong> ${data.detected_domain}</p>
+                        <p><strong>도메인 가중치:</strong> 벡터(${data.domain_weights.vector}), BM25(${data.domain_weights.bm25})</p>
+                        <div style="margin-top: 10px;">
+                            <strong>검색 전략:</strong>
+                            <p>${data.strategy.description}</p>
+                            <p><strong>권장 알고리즘:</strong> ${data.strategy.recommended_algorithm}</p>
+                            <strong>최적화 팁:</strong>
+                            <ul style="margin-top: 5px;">
+                                ${data.strategy.optimization_tips.map(tip => `<li>${tip}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    showError('도메인 분석에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('도메인 분석 실패:', error);
+                showError('도메인 분석에 실패했습니다.');
+            }
+        }
+
+        // 품질 메트릭 조회
+        async function getQualityMetrics() {
+            try {
+                const response = await fetch('/search/quality-metrics');
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const resultsDiv = document.getElementById('hybrid-search-results');
+                    resultsDiv.innerHTML = `
+                        <h4>📊 검색 품질 메트릭</h4>
+                        <p><strong>전체 메트릭:</strong> ${data.total_metrics}개</p>
+                        <div style="margin-top: 10px;">
+                            <strong>전체 성능:</strong>
+                            <ul style="margin-top: 5px;">
+                                <li>평균 검색 시간: ${data.overall_performance.avg_search_time}s</li>
+                                <li>평균 결과 수: ${data.overall_performance.avg_results_count}개</li>
+                                <li>평균 점수: ${data.overall_performance.avg_score}</li>
+                            </ul>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <strong>알고리즘별 성능:</strong>
+                            <ul style="margin-top: 5px;">
+                                ${Object.entries(data.algorithm_performance).map(([algo, perf]) =>
+                        `<li>${algo}: 검색시간 ${perf.avg_search_time.toFixed(3)}s, 결과수 ${perf.avg_results_count.toFixed(1)}개, 점수 ${perf.avg_score.toFixed(3)}</li>`
+                    ).join('')}
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `<p>${data.message}</p>`;
+                }
+            } catch (error) {
+                console.error('품질 메트릭 조회 실패:', error);
+                showError('품질 메트릭 조회에 실패했습니다.');
+            }
+        }
     </script>
 </body>
 

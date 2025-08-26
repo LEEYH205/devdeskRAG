@@ -364,7 +364,7 @@ class PerformanceAnalyzer:
             return 'stable'
 
 class AdvancedSearchEngine:
-    """고급 검색 엔진"""
+    """고급 검색 엔진 - 동적 가중치 조정, A/B 테스트, 성능 병목 분석"""
     
     def __init__(self):
         self.weight_optimizer = WeightOptimizer()
@@ -372,21 +372,58 @@ class AdvancedSearchEngine:
         self.performance_analyzer = PerformanceAnalyzer()
         self.search_metrics_history = deque(maxlen=1000)
         
-        # 기본 A/B 테스트 실험 생성
-        self._setup_default_experiments()
+        # 실제 검색 시스템과의 연동을 위한 변수들
+        self.vector_store = None
+        self.retriever = None
+        self.embedding_model = None
+        self.bm25_retriever = None
+        
+        # 검색 설정
+        self.search_config = {
+            'max_results': 10,
+            'min_score_threshold': 0.3,
+            'rerank_enabled': True,
+            'domain_weights': {
+                'technical': {'vector': 0.8, 'bm25': 0.2},
+                'general': {'vector': 0.6, 'bm25': 0.4},
+                'code': {'vector': 0.7, 'bm25': 0.3}
+            }
+        }
+        
+        # 도메인 분류기 (간단한 키워드 기반)
+        self.domain_classifier = {
+            'technical': ['api', 'system', 'performance', 'algorithm', 'optimization', 'architecture'],
+            'general': ['what', 'how', 'explain', 'describe', 'introduction', 'overview'],
+            'code': ['code', 'implementation', 'function', 'class', 'method', 'syntax', 'error']
+        }
     
-    def _setup_default_experiments(self):
-        """기본 A/B 테스트 실험 설정"""
-        # 검색 알고리즘 비교 실험
-        self.ab_test_framework.create_experiment(
-            experiment_id="search_algorithm_comparison",
-            variants=[
-                {'algorithm': 'vector_only', 'description': '벡터 검색만 사용'},
-                {'algorithm': 'hybrid', 'description': '하이브리드 검색'},
-                {'algorithm': 'weighted_hybrid', 'description': '가중치 기반 하이브리드'}
-            ],
-            traffic_split=[0.33, 0.33, 0.34]
-        )
+    def initialize_search_system(self, vector_store, retriever, embedding_model, bm25_retriever=None):
+        """실제 검색 시스템과 연동 초기화"""
+        self.vector_store = vector_store
+        self.retriever = retriever
+        self.embedding_model = embedding_model
+        self.bm25_retriever = bm25_retriever
+        
+        logger.info("고급 검색 엔진 초기화 완료")
+        logger.info(f"벡터 스토어: {type(vector_store).__name__}")
+        logger.info(f"리트리버: {type(retriever).__name__}")
+        logger.info(f"임베딩 모델: {type(embedding_model).__name__}")
+        if bm25_retriever:
+            logger.info(f"BM25 리트리버: {type(bm25_retriever).__name__}")
+    
+    def classify_query_domain(self, query: str) -> str:
+        """쿼리의 도메인 분류"""
+        query_lower = query.lower()
+        
+        for domain, keywords in self.domain_classifier.items():
+            if any(keyword in query_lower for keyword in keywords):
+                return domain
+        
+        return 'general'  # 기본값
+    
+    def get_domain_weights(self, domain: str) -> Dict[str, float]:
+        """도메인별 가중치 반환"""
+        return self.search_config['domain_weights'].get(domain, self.search_config['domain_weights']['general'])
     
     def search(self, query: str, user_id: str = None, 
                algorithm: str = None, use_ab_test: bool = True) -> List[SearchResult]:
@@ -453,28 +490,68 @@ class AdvancedSearchEngine:
         return results
     
     def _vector_search(self, query: str) -> List[SearchResult]:
-        """벡터 검색 (실제 구현은 기존 시스템과 연동)"""
-        # 임시 구현 - 실제로는 기존 벡터 검색 사용
-        return [
-            SearchResult(
-                content=f"벡터 검색 결과: {query}",
-                metadata={'source': 'vector_search'},
-                score=0.85,
-                source='vector_search'
-            )
-        ]
+        """실제 벡터 검색 실행"""
+        if not self.retriever:
+            logger.warning("벡터 리트리버가 초기화되지 않음")
+            return []
+        
+        try:
+            # 기존 리트리버를 사용하여 검색
+            docs = self.retriever.invoke(query)
+            
+            # SearchResult로 변환
+            results = []
+            for i, doc in enumerate(docs):
+                # 간단한 점수 계산 (순위 기반)
+                score = max(0.1, 1.0 - (i * 0.1))
+                
+                result = SearchResult(
+                    content=doc.page_content,
+                    metadata=doc.metadata,
+                    score=score,
+                    source='vector_search'
+                )
+                result.rank = i + 1
+                results.append(result)
+            
+            logger.debug(f"벡터 검색 완료: {len(results)}개 결과")
+            return results
+            
+        except Exception as e:
+            logger.error(f"벡터 검색 실패: {e}")
+            return []
     
     def _bm25_search(self, query: str) -> List[SearchResult]:
-        """BM25 검색 (실제 구현은 기존 시스템과 연동)"""
-        # 임시 구현 - 실제로는 기존 BM25 검색 사용
-        return [
-            SearchResult(
-                content=f"BM25 검색 결과: {query}",
-                metadata={'source': 'bm25_search'},
-                score=0.75,
-                source='bm25_search'
-            )
-        ]
+        """실제 BM25 검색 실행"""
+        if not self.bm25_retriever:
+            logger.warning("BM25 리트리버가 초기화되지 않음")
+            return []
+        
+        try:
+            # BM25 검색 실행
+            docs = self.bm25_retriever.invoke(query)
+            
+            # SearchResult로 변환
+            results = []
+            for i, doc in enumerate(docs):
+                # BM25 점수를 정규화 (0.1 ~ 1.0)
+                score = max(0.1, min(1.0, doc.metadata.get('score', 0.5)))
+                
+                result = SearchResult(
+                    content=doc.page_content,
+                    metadata=doc.metadata,
+                    score=score,
+                    source='bm25_search'
+                )
+                result.rank = i + 1
+                results.append(result)
+            
+            logger.debug(f"BM25 검색 완료: {len(results)}개 결과")
+            return results
+            
+        except Exception as e:
+            logger.error(f"BM25 검색 실패: {e}")
+            return []
     
     def _hybrid_search(self, query: str) -> List[SearchResult]:
         """하이브리드 검색"""
@@ -488,24 +565,113 @@ class AdvancedSearchEngine:
         return all_results[:5]  # 상위 5개 결과
     
     def _weighted_hybrid_search(self, query: str) -> List[SearchResult]:
-        """가중치 기반 하이브리드 검색"""
-        weights = self.weight_optimizer.current_weights
+        """도메인별 가중치 기반 하이브리드 검색"""
+        # 도메인 분류 및 가중치 결정
+        domain = self.classify_query_domain(query)
+        domain_weights = self.get_domain_weights(domain)
         
+        logger.debug(f"쿼리 도메인: {domain}, 가중치: {domain_weights}")
+        
+        # 각 검색 알고리즘 실행
         vector_results = self._vector_search(query)
-        bm25_results = self._bm25_search(query)
+        bm25_results = self._bm25_search(query) if self.bm25_retriever else []
         
-        # 가중치 적용
+        # 도메인별 가중치 적용
         for result in vector_results:
-            result.score *= weights['vector_weight']
+            result.score *= domain_weights['vector']
+            result.relevance_score = result.score  # 관련성 점수 설정
         
         for result in bm25_results:
-            result.score *= weights['bm25_weight']
+            result.score *= domain_weights['bm25']
+            result.relevance_score = result.score  # 관련성 점수 설정
         
-        # 결과 병합 및 재랭킹
-        all_results = vector_results + bm25_results
+        # 결과 병합 및 중복 제거
+        all_results = self._merge_and_deduplicate_results(vector_results, bm25_results)
+        
+        # 최종 점수 계산 및 재랭킹
+        all_results = self._calculate_final_scores(all_results, query)
         all_results.sort(key=lambda x: x.score, reverse=True)
         
-        return all_results[:5]
+        # 최대 결과 수 제한
+        max_results = self.search_config['max_results']
+        return all_results[:max_results]
+    
+    def _merge_and_deduplicate_results(self, vector_results: List[SearchResult], 
+                                     bm25_results: List[SearchResult]) -> List[SearchResult]:
+        """검색 결과 병합 및 중복 제거"""
+        merged_results = {}
+        
+        # 벡터 검색 결과 추가
+        for result in vector_results:
+            content_key = result.content[:100]  # 내용의 첫 100자로 키 생성
+            if content_key not in merged_results:
+                merged_results[content_key] = result
+            else:
+                # 더 높은 점수로 업데이트
+                if result.score > merged_results[content_key].score:
+                    merged_results[content_key] = result
+        
+        # BM25 검색 결과 추가/병합
+        for result in bm25_results:
+            content_key = result.content[:100]
+            if content_key not in merged_results:
+                merged_results[content_key] = result
+            else:
+                # 기존 결과와 점수 병합
+                existing = merged_results[content_key]
+                existing.score = (existing.score + result.score) / 2
+                existing.relevance_score = max(existing.relevance_score, result.relevance_score)
+        
+        return list(merged_results.values())
+    
+    def _calculate_final_scores(self, results: List[SearchResult], query: str) -> List[SearchResult]:
+        """최종 점수 계산 (컨텍스트 및 품질 고려)"""
+        for result in results:
+            # 기본 점수
+            base_score = result.score
+            
+            # 컨텍스트 품질 점수 (메타데이터 기반)
+            context_score = self._calculate_context_score(result, query)
+            
+            # 최종 점수 계산 (가중 평균)
+            final_score = (base_score * 0.7) + (context_score * 0.3)
+            result.score = min(1.0, max(0.1, final_score))
+            
+            # 관련성 점수 업데이트
+            result.relevance_score = result.score
+        
+        return results
+    
+    def _calculate_context_score(self, result: SearchResult, query: str) -> float:
+        """컨텍스트 품질 점수 계산"""
+        score = 0.5  # 기본 점수
+        
+        # 메타데이터 품질 평가
+        metadata = result.metadata
+        
+        # 소스 파일 유형
+        if 'source' in metadata:
+            source = metadata['source'].lower()
+            if source.endswith('.md') or source.endswith('.txt'):
+                score += 0.1  # 마크다운/텍스트 파일 우선
+            elif source.endswith('.pdf'):
+                score += 0.05  # PDF 파일
+        
+        # 청크 길이 (적절한 길이 우선)
+        content_length = len(result.content)
+        if 100 <= content_length <= 1000:
+            score += 0.1  # 적절한 길이
+        elif content_length > 1000:
+            score += 0.05  # 긴 내용
+        
+        # 쿼리와의 키워드 매칭
+        query_words = set(query.lower().split())
+        content_words = set(result.content.lower().split())
+        keyword_overlap = len(query_words.intersection(content_words))
+        if keyword_overlap > 0:
+            score += min(0.2, keyword_overlap * 0.05)
+        
+        return min(1.0, score)
     
     def _get_variant_index(self, algorithm: str) -> int:
         """알고리즘에 따른 변형 인덱스 반환"""
