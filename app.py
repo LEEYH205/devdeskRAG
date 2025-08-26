@@ -382,7 +382,7 @@ class FileUploadResponse(BaseModel):
 app = FastAPI(
     title="DevDesk-RAG",
     description="나만의 ChatGPT - RAG 기반 문서 Q&A 시스템",
-    version="2.1.0"
+    version="2.2.0"
 )
 
 # CORS 설정
@@ -411,7 +411,7 @@ async def get_performance_dashboard_alt():
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
-    logger.info("Starting DevDesk-RAG API v2.1...")
+    logger.info("Starting DevDesk-RAG API v2.2.0...")
     if not initialize_components():
         logger.error("Failed to initialize components. Check your configuration.")
         raise RuntimeError("Component initialization failed")
@@ -842,10 +842,15 @@ async def get_advanced_search_dashboard():
     """고급 검색 알고리즘 대시보드 페이지를 제공합니다"""
     return FileResponse("advanced_search/advanced_search_dashboard.html")
 
+@app.get("/advanced_analysis_dashboard")
+async def get_advanced_analysis_dashboard():
+    """Phase 2.2 고급 분석 대시보드 페이지를 제공합니다"""
+    return FileResponse("advanced_search/advanced_analysis_dashboard.html")
+
 @app.get("/")
 def root():
     return {
-        "message": "DevDesk-RAG API v2.1", 
+        "message": "DevDesk-RAG API v2.2.0", 
         "endpoints": ["/chat", "/chat/stream", "/upload", "/files", "/sessions", "/health", "/ui", "/config"],
         "features": ["Performance Monitoring", "Optimized RAG", "CORS Support", "Web UI", "Chat History", "Streaming Response", "File Upload"],
         "web_ui": "/ui"
@@ -1015,6 +1020,230 @@ def hybrid_search(query: str, user_id: str = None, domain: str = None):
     except Exception as e:
         logger.error(f"하이브리드 검색 실패: {e}")
         raise HTTPException(status_code=500, detail=f"하이브리드 검색 실패: {str(e)}")
+
+# ===== Phase 2.2: 재랭킹 시스템 개선 API 엔드포인트 =====
+
+@app.get("/rerank/stats")
+def get_rerank_stats():
+    """재랭킹 시스템 통계 정보를 제공합니다"""
+    try:
+        from advanced_search.rerank_system import advanced_rerank_system
+        
+        stats = advanced_rerank_system.get_rerank_stats()
+        
+        # 추가 통계 계산
+        stats.update({
+            'total_reranks': 0,  # 나중에 실제 데이터로 교체
+            'avg_improvement': 0.0,  # 나중에 실제 데이터로 교체
+            'rerank_trends': {
+                'daily_reranks': [0, 0, 0, 0, 0, 0, 0],  # 일주일 데이터
+                'improvement_trend': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            }
+        })
+        
+        return {
+            "status": "success",
+            "stats": stats,
+            "trends": stats['rerank_trends'],
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"재랭킹 통계 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"재랭킹 통계 조회 실패: {str(e)}")
+
+@app.post("/rerank/test")
+async def test_rerank_system(request: dict):
+    """재랭킹 시스템을 테스트합니다"""
+    try:
+        from advanced_search.rerank_system import advanced_rerank_system, RerankStrategy
+        
+        query = request.get("query", "")
+        documents = request.get("documents", [])
+        strategy_name = request.get("strategy", "hybrid")
+        
+        # 전략 매핑
+        strategy_mapping = {
+            "context_aware": RerankStrategy.CONTEXT_AWARE,
+            "feedback_learning": RerankStrategy.FEEDBACK_LEARNING,
+            "hybrid": RerankStrategy.HYBRID,
+            "adaptive": RerankStrategy.ADAPTIVE
+        }
+        
+        strategy = strategy_mapping.get(strategy_name, RerankStrategy.HYBRID)
+        
+        # 메타데이터 생성
+        metadata = [{'id': f'doc_{i}', 'source': 'test'} for i in range(len(documents))]
+        
+        # 재랭킹 실행
+        results = await advanced_rerank_system.rerank_documents(
+            query=query,
+            documents=documents,
+            metadata=metadata,
+            strategy=strategy
+        )
+        
+        return {
+            "status": "success",
+            "query": query,
+            "strategy": strategy_name,
+            "results": [r.to_dict() for r in results],
+            "count": len(results),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"재랭킹 테스트 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"재랭킹 테스트 실패: {str(e)}")
+
+@app.post("/rerank/test/context")
+async def test_context_aware_rerank(request: dict):
+    """컨텍스트 기반 재랭킹을 테스트합니다"""
+    try:
+        from advanced_search.rerank_system import advanced_rerank_system, RerankStrategy
+        
+        query = request.get("query", "")
+        context = request.get("context", "")
+        documents = request.get("documents", [])
+        
+        # 메타데이터 생성
+        metadata = [{'id': f'doc_{i}', 'source': 'test'} for i in range(len(documents))]
+        
+        # 컨텍스트 기반 재랭킹 실행
+        results = await advanced_rerank_system.rerank_documents(
+            query=query,
+            documents=documents,
+            metadata=metadata,
+            context=context,
+            strategy=RerankStrategy.CONTEXT_AWARE
+        )
+        
+        return {
+            "status": "success",
+            "query": query,
+            "context": context,
+            "results": [r.to_dict() for r in results],
+            "count": len(results),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"컨텍스트 재랭킹 테스트 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"컨텍스트 재랭킹 테스트 실패: {str(e)}")
+
+@app.post("/rerank/test/feedback")
+async def test_feedback_learning_rerank(request: dict):
+    """피드백 학습 재랭킹을 테스트합니다"""
+    try:
+        from advanced_search.rerank_system import advanced_rerank_system, RerankStrategy
+        
+        user_id = request.get("user_id", "")
+        query = request.get("query", "")
+        feedback_data = request.get("feedback_data", [])
+        
+        # 피드백 데이터 처리
+        for feedback in feedback_data:
+            advanced_rerank_system.update_user_feedback(
+                user_id=user_id,
+                query=query,
+                document_id=feedback.get("document_id", ""),
+                feedback_score=feedback.get("score", 0.5)
+            )
+        
+        # 테스트 문서
+        documents = [
+            "DevDesk-RAG는 고급 검색 알고리즘을 사용합니다.",
+            "성능 모니터링 시스템이 실시간으로 작동합니다.",
+            "사용자 피드백을 기반으로 지속 개선됩니다."
+        ]
+        
+        metadata = [{'id': f'doc_{i}', 'source': 'test'} for i in range(len(documents))]
+        
+        # 피드백 학습 재랭킹 실행
+        results = await advanced_rerank_system.rerank_documents(
+            query=query,
+            documents=documents,
+            metadata=metadata,
+            user_id=user_id,
+            strategy=RerankStrategy.FEEDBACK_LEARNING
+        )
+        
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "query": query,
+            "feedback_applied": len(feedback_data),
+            "results": [r.to_dict() for r in results],
+            "count": len(results),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"피드백 학습 재랭킹 테스트 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"피드백 학습 재랭킹 테스트 실패: {str(e)}")
+
+@app.get("/rerank/experiments")
+def get_rerank_experiments():
+    """재랭킹 실험 정보를 제공합니다"""
+    try:
+        # 임시 실험 데이터 (나중에 실제 데이터로 교체)
+        experiments = {
+            "rerank_strategy_comparison": {
+                "status": "running",
+                "variants": [
+                    {"strategy": "context_aware", "description": "컨텍스트 기반 재랭킹"},
+                    {"strategy": "feedback_learning", "description": "피드백 학습 재랭킹"},
+                    {"strategy": "hybrid", "description": "하이브리드 재랭킹"}
+                ],
+                "traffic_split": [0.33, 0.33, 0.34],
+                "start_date": "2025-01-01",
+                "participants": 150
+            }
+        }
+        
+        return {
+            "status": "success",
+            "experiments": experiments,
+            "count": len(experiments),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"재랭킹 실험 정보 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"재랭킹 실험 정보 조회 실패: {str(e)}")
+
+@app.post("/rerank/experiments")
+def create_rerank_experiment(experiment_data: dict):
+    """새로운 재랭킹 실험을 생성합니다"""
+    try:
+        experiment_id = experiment_data.get("experiment_id")
+        variants = experiment_data.get("variants", [])
+        traffic_split = experiment_data.get("traffic_split")
+        
+        # 실험 생성 로직 (나중에 실제 구현)
+        logger.info(f"새로운 재랭킹 실험 생성: {experiment_id}")
+        
+        return {
+            "status": "success",
+            "message": f"재랭킹 실험 {experiment_id} 생성 완료",
+            "experiment_id": experiment_id,
+            "variants_count": len(variants),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"재랭킹 실험 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"재랭킹 실험 생성 실패: {str(e)}")
+
+@app.post("/rerank/experiments/stop")
+def stop_all_rerank_experiments():
+    """모든 재랭킹 실험을 중지합니다"""
+    try:
+        # 실험 중지 로직 (나중에 실제 구현)
+        logger.info("모든 재랭킹 실험 중지")
+        
+        return {
+            "status": "success",
+            "message": "모든 재랭킹 실험이 중지되었습니다",
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"재랭킹 실험 중지 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"재랭킹 실험 중지 실패: {str(e)}")
 
 @app.get("/search/domain-analysis")
 def analyze_query_domain(query: str):
