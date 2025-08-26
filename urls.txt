@@ -1,0 +1,3 @@
+https://python.langchain.com/docs/get_started/introduction
+https://ollama.ai/library/exaone
+https://together.ai/models/lgai/exaone-deep-32b
