@@ -1,4 +1,4 @@
-# 🚀 DevDesk-RAG v2.0
+# 🚀 DevDesk-RAG v2.1
 
 **나만의 ChatGPT - RAG 기반 문서 Q&A 시스템**
 
@@ -12,14 +12,16 @@ DevDesk-RAG는 LangChain과 Ollama를 활용한 로컬 RAG(Retrieval-Augmented G
 - **한국어 최적화**: EXAONE 모델을 통한 한국어 이해력 향상
 - **성능 모니터링**: 실시간 응답 시간 및 시스템 상태 추적
 
-### 🚀 **v2.0 신규 기능**
+### 🚀 **v2.1 구현 완료 기능** ✅
 - **웹 UI**: 현대적이고 아름다운 채팅 인터페이스
 - **하이브리드 검색**: 벡터 검색 + BM25 + 재랭킹
 - **Docker 컨테이너화**: 쉬운 배포 및 확장
 - **고급 아키텍처**: 마이크로서비스 기반 구조
-
-### 🔮 **v2.1+ 계획 기능** (개발 중)
 - **대화형 인터페이스 고도화**: 채팅 히스토리 저장, 실시간 스트리밍 응답, 파일 업로드
+- **Redis 기반 채팅 히스토리**: 영구 저장 및 세션 관리
+- **실시간 문서 처리**: 업로드된 파일 자동 인덱싱
+
+### 🔮 **v2.2+ 계획 기능** (개발 예정)
 - **하이브리드 검색 강화**: 다중 검색 알고리즘 통합 및 재랭킹 시스템
 - **멀티모달 지원**: 이미지+텍스트 처리, PDF 이미지 분석, OCR 기능
 - **자동화 시스템**: 문서 자동 동기화, 합성데이터 생성
@@ -228,12 +230,15 @@ devdesk-rag/
 ├── app.py                 # 메인 FastAPI 애플리케이션
 ├── ingest.py              # 문서 수집 및 처리
 ├── advanced_search.py     # 고급 검색 모듈
+├── chat_history.py        # Redis 기반 채팅 히스토리 관리
+├── document_processor.py  # 실시간 문서 처리 및 인덱싱
 ├── requirements.txt       # Python 의존성
 ├── .env                   # 환경 설정
 ├── static/                # 웹 UI 정적 파일
 │   └── index.html        # 메인 웹 인터페이스
 ├── data/                  # 문서 저장소
 ├── chroma_db/            # 벡터 데이터베이스
+├── redis_backup/         # Redis 채팅 히스토리 백업
 ├── Dockerfile            # Docker 이미지 정의
 ├── docker-compose.yml    # Docker Compose 설정
 ├── nginx.conf            # Nginx 설정
@@ -265,6 +270,27 @@ TEMPERATURE=0.1
 - **검색 정확도**: 85-95%
 - **메모리 사용량**: 2-4GB
 - **동시 사용자**: 단일 사용자 최적화
+
+## 🔧 **Redis 채팅 히스토리 관리**
+
+### **Redis 백업 파일 위치**
+```
+devdesk-rag/
+└── redis_backup/
+    └── dump.rdb          # 채팅 히스토리 백업 파일
+```
+
+### **Redis 설정**
+- **포트**: 6379 (기본)
+- **백업 위치**: 프로젝트 폴더 내 `redis_backup/`
+- **데이터 지속성**: RDB 스냅샷 방식
+- **Git 추적**: 백업 폴더는 `.gitignore`에 포함
+
+### **채팅 히스토리 기능**
+- **세션 관리**: 사용자별 대화 세션 생성 및 관리
+- **메시지 저장**: 질문과 답변의 완전한 기록
+- **검색 기능**: 과거 대화 내용 검색
+- **자동 정리**: 오래된 세션 자동 삭제
 
 ## 🔍 **문제 해결**
 
@@ -299,6 +325,27 @@ docker-compose logs devdesk-rag
 
 # 컨테이너 재시작
 docker-compose restart devdesk-rag
+```
+
+#### **Redis 연결 오류**
+```bash
+# Redis 서비스 상태 확인
+brew services list | grep redis
+
+# Redis 재시작
+brew services restart redis
+
+# Redis 백업 파일 확인
+ls -la redis_backup/
+```
+
+#### **채팅 히스토리 손실**
+```bash
+# Redis 백업 파일 복원
+cp redis_backup/dump.rdb /opt/homebrew/var/db/redis/
+
+# Redis 재시작
+brew services restart redis
 ```
 
 ### **로그 확인**
@@ -336,14 +383,15 @@ done
 
 ## 🛣️ **로드맵**
 
-### **v2.1 - 대화형 인터페이스 고도화**
-- [ ] **채팅 히스토리 저장**: Redis 기반 대화 기록 관리
-- [ ] **실시간 스트리밍 응답**: Server-Sent Events를 통한 점진적 답변 생성
-- [ ] **파일 업로드 기능**: 드래그 앤 드롭으로 문서 추가
+### **v2.1 - 대화형 인터페이스 고도화** ✅ **완료**
+- [x] **채팅 히스토리 저장**: Redis 기반 대화 기록 관리
+- [x] **실시간 스트리밍 응답**: Server-Sent Events를 통한 점진적 답변 생성
+- [x] **파일 업로드 기능**: 드래그 앤 드롭으로 문서 추가
+- [x] **Redis 백업 관리**: 프로젝트 폴더 내 채팅 히스토리 보관
 - [ ] **사용자 인증 및 권한 관리**: API 키 기반 보안 시스템
 - [ ] **문서 버전 관리**: 변경 이력 추적 및 롤백 기능
 
-### **v2.2 - 검색 및 분석 강화**
+### **v2.2 - 검색 및 분석 강화** 🚧 **개발 중**
 - [ ] **하이브리드 검색 강화**: 다중 검색 알고리즘 통합
 - [ ] **재랭킹 시스템**: Together API Rerank를 통한 검색 품질 향상
 - [ ] **고급 분석 대시보드**: 검색 성능, 사용 패턴 분석

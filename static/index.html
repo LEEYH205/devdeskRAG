@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevDesk-RAG - 나만의 ChatGPT</title>
+    <title>DevDesk-RAG v2.1 - 대화형 인터페이스</title>
     <style>
         * {
             margin: 0;
@@ -13,7 +13,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             color: #333;
@@ -44,85 +44,190 @@
 
         .main-content {
             display: grid;
-            grid-template-columns: 1fr 300px;
+            grid-template-columns: 300px 1fr;
             gap: 20px;
+            height: 80vh;
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+
+        .chat-area {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .session-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
             margin-bottom: 20px;
         }
 
-        .chat-container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+        .session-info h3 {
+            color: #495057;
+            margin-bottom: 10px;
         }
 
-        .chat-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .session-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #007bff;
             color: white;
-            padding: 20px;
-            text-align: center;
         }
 
-        .chat-header h2 {
-            font-size: 1.5rem;
-            margin-bottom: 5px;
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .file-upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-upload-area:hover {
+            border-color: #007bff;
+            background: #f8f9fa;
+        }
+
+        .file-upload-area.dragover {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+
+        .file-upload-area input[type="file"] {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #6c757d;
+            margin-bottom: 15px;
         }
 
         .chat-messages {
-            height: 500px;
+            flex: 1;
             overflow-y: auto;
             padding: 20px;
-            background: #f8f9fa;
         }
 
         .message {
             margin-bottom: 20px;
             display: flex;
             align-items: flex-start;
+            gap: 15px;
         }
 
         .message.user {
-            justify-content: flex-end;
+            flex-direction: row-reverse;
         }
 
-        .message.bot {
-            justify-content: flex-start;
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background: #007bff;
+        }
+
+        .message.bot .message-avatar {
+            background: #28a745;
         }
 
         .message-content {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 15px;
             max-width: 70%;
-            padding: 15px 20px;
-            border-radius: 20px;
             position: relative;
         }
 
         .message.user .message-content {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #007bff;
             color: white;
-            border-bottom-right-radius: 5px;
         }
 
         .message.bot .message-content {
-            background: white;
-            border: 1px solid #e9ecef;
-            border-bottom-left-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            background: #e9ecef;
         }
 
         .message-time {
-            font-size: 0.8rem;
-            opacity: 0.7;
+            font-size: 12px;
+            color: #6c757d;
             margin-top: 5px;
         }
 
         .message.user .message-time {
-            text-align: right;
+            color: rgba(255, 255, 255, 0.8);
         }
 
-        .chat-input {
+        .message-sources {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .message.user .message-sources {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .chat-input-area {
             padding: 20px;
-            background: white;
-            border-top: 1px solid #e9ecef;
+            border-top: 1px solid #dee2e6;
+            background: #f8f9fa;
+            border-radius: 0 0 15px 15px;
         }
 
         .input-group {
@@ -130,138 +235,137 @@
             gap: 10px;
         }
 
-        .chat-input input {
+        .chat-input {
             flex: 1;
-            padding: 15px 20px;
-            border: 2px solid #e9ecef;
+            padding: 12px 16px;
+            border: 2px solid #dee2e6;
             border-radius: 25px;
-            font-size: 1rem;
+            font-size: 16px;
             outline: none;
-            transition: border-color 0.3s;
+            transition: border-color 0.3s ease;
         }
 
-        .chat-input input:focus {
-            border-color: #667eea;
+        .chat-input:focus {
+            border-color: #007bff;
         }
 
-        .chat-input button {
-            padding: 15px 25px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .send-btn {
+            padding: 12px 24px;
+            background: #007bff;
             color: white;
             border: none;
             border-radius: 25px;
-            font-size: 1rem;
             cursor: pointer;
-            transition: transform 0.2s;
+            font-size: 16px;
+            transition: background 0.3s ease;
         }
 
-        .chat-input button:hover {
-            transform: translateY(-2px);
+        .send-btn:hover {
+            background: #0056b3;
         }
 
-        .chat-input button:disabled {
-            opacity: 0.6;
+        .send-btn:disabled {
+            background: #6c757d;
             cursor: not-allowed;
-            transform: none;
         }
 
-        .sidebar {
+        .performance-info {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #495057;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 15px;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .typing-indicator.show {
+            display: block;
+        }
+
+        .status-bar {
+            background: #f8f9fa;
+            padding: 10px 20px;
+            border-radius: 10px 10px 0 0;
+            border-bottom: 1px solid #dee2e6;
             display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 20px;
-            padding: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-        }
-
-        .card h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 1.2rem;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .status-indicator {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
+            gap: 8px;
         }
 
         .status-dot {
-            width: 12px;
-            height: 12px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: #28a745;
-        }
-
-        .status-dot.warning {
-            background: #ffc107;
         }
 
         .status-dot.error {
             background: #dc3545;
         }
 
-        .performance-item {
+        .status-dot.warning {
+            background: #ffc107;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
             display: flex;
             justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
             margin-bottom: 8px;
-            padding: 8px 0;
-            border-bottom: 1px solid #f0f0f0;
         }
 
-        .performance-item:last-child {
-            border-bottom: none;
+        .file-info {
+            flex: 1;
         }
 
-        .performance-label {
-            font-weight: 500;
-            color: #666;
+        .file-name {
+            font-weight: bold;
+            color: #495057;
         }
 
-        .performance-value {
-            font-weight: 600;
-            color: #333;
+        .file-meta {
+            font-size: 12px;
+            color: #6c757d;
         }
 
-        .sources-list {
-            list-style: none;
+        .file-actions {
+            display: flex;
+            gap: 5px;
         }
 
-        .sources-list li {
-            padding: 8px 0;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: 0.9rem;
-            color: #666;
-        }
-
-        .sources-list li:last-child {
-            border-bottom: none;
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
         }
 
         .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            color: #666;
-        }
-
-        .loading.show {
-            display: block;
-        }
-
-        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
             border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
+            border-top: 3px solid #007bff;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
         }
 
         @keyframes spin {
@@ -274,17 +378,29 @@
             }
         }
 
-        .error-message {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 10px;
-            margin: 10px 0;
-            display: none;
+        .streaming-content {
+            display: inline;
         }
 
-        .error-message.show {
-            display: block;
+        .streaming-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background: #007bff;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0;
+            }
         }
 
         @media (max-width: 768px) {
@@ -292,12 +408,12 @@
                 grid-template-columns: 1fr;
             }
 
-            .header h1 {
-                font-size: 2rem;
+            .sidebar {
+                order: 2;
             }
 
-            .chat-messages {
-                height: 400px;
+            .chat-area {
+                order: 1;
             }
         }
     </style>
@@ -306,77 +422,98 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 DevDesk-RAG</h1>
-            <p>나만의 ChatGPT - RAG 기반 문서 Q&A 시스템</p>
+            <h1>🚀 DevDesk-RAG v2.1</h1>
+            <p>대화형 인터페이스 - 채팅 히스토리, 스트리밍 응답, 파일 업로드</p>
         </div>
 
         <div class="main-content">
-            <div class="chat-container">
-                <div class="chat-header">
-                    <h2>💬 문서 Q&A</h2>
-                    <p>문서에 대해 자유롭게 질문하세요</p>
+            <!-- 사이드바 -->
+            <div class="sidebar">
+                <div class="session-info">
+                    <h3>📱 세션 정보</h3>
+                    <div id="current-session">새 세션 생성 중...</div>
+                    <div id="session-stats">메시지: 0개</div>
                 </div>
 
-                <div class="chat-messages" id="chatMessages">
-                    <div class="message bot">
-                        <div class="message-content">
-                            안녕하세요! DevDesk-RAG 시스템입니다. 📚<br>
-                            문서에 대한 질문을 입력해주시면 답변해드리겠습니다.
-                            <div class="message-time">시스템</div>
-                        </div>
-                    </div>
+                <div class="session-actions">
+                    <button class="btn btn-primary" onclick="createNewSession()">새 세션</button>
+                    <button class="btn btn-secondary" onclick="loadSessionHistory()">히스토리</button>
+                    <button class="btn btn-danger" onclick="deleteCurrentSession()">세션 삭제</button>
                 </div>
 
-                <div class="loading" id="loading">
-                    <div class="spinner"></div>
-                    <p>답변을 생성하고 있습니다...</p>
+                <div class="file-upload-area" onclick="document.getElementById('file-input').click()"
+                    ondrop="handleFileDrop(event)" ondragover="handleDragOver(event)"
+                    ondragleave="handleDragLeave(event)">
+                    <div class="upload-icon">📁</div>
+                    <p>파일을 드래그 앤 드롭하거나 클릭하여 업로드</p>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 10px;">
+                        지원 형식: PDF, MD, TXT, DOC, HTML
+                    </p>
+                    <input type="file" id="file-input" multiple accept=".pdf,.md,.txt,.doc,.docx,.html,.htm"
+                        onchange="handleFileSelect(event)">
                 </div>
 
-                <div class="error-message" id="errorMessage"></div>
-
-                <div class="chat-input">
-                    <div class="input-group">
-                        <input type="text" id="questionInput" placeholder="질문을 입력하세요..."
-                            onkeypress="handleKeyPress(event)">
-                        <button onclick="sendQuestion()" id="sendButton">전송</button>
+                <div class="file-list">
+                    <h4>📂 업로드된 파일</h4>
+                    <div id="file-list-container">
+                        <p style="color: #6c757d; font-size: 14px;">파일을 업로드하면 여기에 표시됩니다.</p>
                     </div>
                 </div>
             </div>
 
-            <div class="sidebar">
-                <div class="card">
-                    <h3>📊 시스템 상태</h3>
+            <!-- 채팅 영역 -->
+            <div class="chat-area">
+                <div class="status-bar">
                     <div class="status-indicator">
-                        <div class="status-dot" id="statusDot"></div>
-                        <span id="statusText">확인 중...</span>
+                        <div class="status-dot" id="status-dot"></div>
+                        <span id="status-text">연결 중...</span>
                     </div>
-                    <div id="statusDetails"></div>
+                    <div id="performance-info"></div>
                 </div>
 
-                <div class="card">
-                    <h3>⚡ 성능 모니터링</h3>
-                    <div id="performanceDetails">
-                        <p>질문을 보내면 성능 정보가 표시됩니다</p>
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message bot">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            안녕하세요! DevDesk-RAG v2.1에 오신 것을 환영합니다! 🎉
+                            <br><br>
+                            <strong>새로운 기능들:</strong><br>
+                            • 💬 채팅 히스토리 저장<br>
+                            • ⚡ 실시간 스트리밍 응답<br>
+                            • 📁 파일 업로드 (드래그 앤 드롭)<br>
+                            • 🔄 세션 관리<br>
+                            <br>
+                            무엇을 도와드릴까요?
+                        </div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <h3>🔍 출처 정보</h3>
-                    <div id="sourcesInfo">
-                        <p>답변의 출처가 여기에 표시됩니다</p>
+                <div class="typing-indicator" id="typing-indicator">
+                    <div class="loading"></div> AI가 답변을 생성하고 있습니다...
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="input-group">
+                        <input type="text" class="chat-input" id="chat-input" placeholder="질문을 입력하세요..."
+                            onkeypress="handleKeyPress(event)">
+                        <button class="send-btn" id="send-btn" onclick="sendMessage()">전송</button>
                     </div>
+                    <div class="performance-info" id="performance-info" style="display: none;"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        let chatHistory = [];
+        let currentSessionId = null;
+        let isStreaming = false;
 
-        // 페이지 로드 시 시스템 상태 확인
-        window.onload = function () {
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function () {
             checkSystemStatus();
-        };
+            createNewSession();
+            loadFileList();
+        });
 
         // 시스템 상태 확인
         async function checkSystemStatus() {
@@ -384,189 +521,386 @@
                 const response = await fetch('/health');
                 const data = await response.json();
 
-                const statusDot = document.getElementById('statusDot');
-                const statusText = document.getElementById('statusText');
-                const statusDetails = document.getElementById('statusDetails');
+                const statusDot = document.getElementById('status-dot');
+                const statusText = document.getElementById('status-text');
 
                 if (data.status === 'healthy') {
                     statusDot.className = 'status-dot';
-                    statusText.textContent = '정상';
-                    statusDetails.innerHTML = `
-                        <div class="performance-item">
-                            <span class="performance-label">모드:</span>
-                            <span class="performance-value">${data.mode}</span>
-                        </div>
-                        <div class="performance-item">
-                            <span class="performance-label">모델:</span>
-                            <span class="performance-value">${data.model}</span>
-                        </div>
-                        <div class="performance-item">
-                            <span class="performance-label">벡터DB:</span>
-                            <span class="performance-value">${data.vector_db ? '연결됨' : '연결 안됨'}</span>
-                        </div>
-                    `;
-                } else {
+                    statusText.textContent = '시스템 정상';
+                } else if (data.status === 'warning') {
                     statusDot.className = 'status-dot warning';
-                    statusText.textContent = '경고';
-                    statusDetails.innerHTML = '<p>시스템에 문제가 있을 수 있습니다</p>';
+                    statusText.textContent = '일부 기능 제한';
+                } else {
+                    statusDot.className = 'status-dot error';
+                    statusText.textContent = '시스템 오류';
                 }
             } catch (error) {
                 console.error('시스템 상태 확인 실패:', error);
-                const statusDot = document.getElementById('statusDot');
-                const statusText = document.getElementById('statusText');
-                statusDot.className = 'status-dot error';
-                statusText.textContent = '오류';
+                document.getElementById('status-dot').className = 'status-dot error';
+                document.getElementById('status-text').textContent = '연결 실패';
             }
         }
 
-        // 질문 전송
-        async function sendQuestion() {
-            const input = document.getElementById('questionInput');
-            const question = input.value.trim();
-
-            if (!question) return;
-
-            // 사용자 메시지 추가
-            addMessage(question, 'user');
-            input.value = '';
-
-            // 로딩 표시
-            showLoading(true);
-            hideError();
-
+        // 새 세션 생성
+        async function createNewSession() {
             try {
-                const response = await fetch('/chat', {
+                const response = await fetch('/sessions', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ question: question })
+                    body: JSON.stringify({ user_id: 'web_user' })
                 });
 
                 const data = await response.json();
+                currentSessionId = data.session_id;
 
-                if (response.ok) {
-                    // 봇 답변 추가
-                    addMessage(data.answer, 'bot');
+                document.getElementById('current-session').textContent = `세션: ${data.session_id.slice(-8)}`;
+                document.getElementById('session-stats').textContent = `메시지: ${data.message_count}개`;
 
-                    // 성능 정보 업데이트
-                    updatePerformance(data.performance);
+                // 채팅 영역 초기화
+                document.getElementById('chat-messages').innerHTML = `
+                    <div class="message bot">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            새로운 세션이 시작되었습니다! 무엇을 도와드릴까요?
+                        </div>
+                    </div>
+                `;
 
-                    // 출처 정보 업데이트
-                    updateSources(data.sources);
-                } else {
-                    throw new Error(data.detail || '알 수 없는 오류가 발생했습니다');
-                }
+                console.log('새 세션 생성됨:', data.session_id);
             } catch (error) {
-                console.error('질문 처리 실패:', error);
-                showError('질문 처리 중 오류가 발생했습니다: ' + error.message);
-                addMessage('죄송합니다. 오류가 발생했습니다.', 'bot');
-            } finally {
-                showLoading(false);
+                console.error('세션 생성 실패:', error);
+                alert('세션 생성에 실패했습니다.');
             }
         }
 
-        // 메시지 추가
-        function addMessage(content, sender) {
-            const chatMessages = document.getElementById('chatMessages');
+        // 세션 히스토리 로드
+        async function loadSessionHistory() {
+            if (!currentSessionId) {
+                alert('먼저 세션을 생성해주세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/sessions/${currentSessionId}/messages`);
+                const data = await response.json();
+
+                if (data.messages.length > 0) {
+                    const chatMessages = document.getElementById('chat-messages');
+                    chatMessages.innerHTML = '';
+
+                    data.messages.forEach(message => {
+                        addMessageToChat(message.content, message.sender, message.timestamp, message.metadata);
+                    });
+
+                    document.getElementById('session-stats').textContent = `메시지: ${data.count}개`;
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                } else {
+                    alert('이 세션에는 메시지가 없습니다.');
+                }
+            } catch (error) {
+                console.error('히스토리 로드 실패:', error);
+                alert('히스토리 로드를 실패했습니다.');
+            }
+        }
+
+        // 현재 세션 삭제
+        async function deleteCurrentSession() {
+            if (!currentSessionId) {
+                alert('삭제할 세션이 없습니다.');
+                return;
+            }
+
+            if (!confirm('현재 세션을 삭제하시겠습니까? 모든 대화 기록이 사라집니다.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/sessions/${currentSessionId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    alert('세션이 삭제되었습니다.');
+                    createNewSession();
+                } else {
+                    alert('세션 삭제에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('세션 삭제 실패:', error);
+                alert('세션 삭제에 실패했습니다.');
+            }
+        }
+
+        // 메시지 전송
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+
+            if (!message || isStreaming) return;
+
+            if (!currentSessionId) {
+                await createNewSession();
+            }
+
+            // 사용자 메시지 추가
+            addMessageToChat(message, 'user');
+            input.value = '';
+
+            // 스트리밍 응답 시작
+            await getStreamingResponse(message);
+        }
+
+        // 스트리밍 응답 받기
+        async function getStreamingResponse(question) {
+            isStreaming = true;
+            const sendBtn = document.getElementById('send-btn');
+            const typingIndicator = document.getElementById('typing-indicator');
+
+            sendBtn.disabled = true;
+            typingIndicator.classList.add('show');
+
+            try {
+                const response = await fetch('/chat/stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        session_id: currentSessionId
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                let botMessageDiv = null;
+                let fullResponse = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+
+                                if (data.type === 'start') {
+                                    // 봇 메시지 시작
+                                    botMessageDiv = addMessageToChat('', 'bot');
+                                    botMessageDiv.querySelector('.message-content').innerHTML = '<div class="streaming-content"></div><div class="streaming-cursor"></div>';
+                                } else if (data.type === 'chunk') {
+                                    // 스트리밍 콘텐츠 추가
+                                    if (botMessageDiv) {
+                                        const streamingContent = botMessageDiv.querySelector('.streaming-content');
+                                        streamingContent.textContent += data.content;
+                                        fullResponse += data.content;
+
+                                        // 자동 스크롤
+                                        botMessageDiv.scrollIntoView({ behavior: 'smooth' });
+                                    }
+                                } else if (data.type === 'complete') {
+                                    // 스트리밍 완료
+                                    if (botMessageDiv) {
+                                        const streamingContent = botMessageDiv.querySelector('.streaming-content');
+                                        streamingContent.innerHTML = fullResponse;
+
+                                        // 출처 정보 추가
+                                        if (data.sources && data.sources.length > 0) {
+                                            const sourcesDiv = document.createElement('div');
+                                            sourcesDiv.className = 'message-sources';
+                                            sourcesDiv.innerHTML = `<strong>출처:</strong> ${data.sources.join(', ')}`;
+                                            botMessageDiv.querySelector('.message-content').appendChild(sourcesDiv);
+                                        }
+
+                                        // 커서 제거
+                                        const cursor = botMessageDiv.querySelector('.streaming-cursor');
+                                        if (cursor) cursor.remove();
+                                    }
+
+                                    // 세션 통계 업데이트
+                                    updateSessionStats();
+                                } else if (data.type === 'error') {
+                                    console.error('스트리밍 오류:', data.message);
+                                    if (botMessageDiv) {
+                                        botMessageDiv.querySelector('.message-content').innerHTML =
+                                            `<span style="color: #dc3545;">오류가 발생했습니다: ${data.message}</span>`;
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('JSON 파싱 오류:', e);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('스트리밍 응답 실패:', error);
+                addMessageToChat('오류가 발생했습니다. 다시 시도해주세요.', 'bot');
+            } finally {
+                isStreaming = false;
+                sendBtn.disabled = false;
+                typingIndicator.classList.remove('show');
+            }
+        }
+
+        // 채팅에 메시지 추가
+        function addMessageToChat(content, sender, timestamp = null, metadata = null) {
+            const chatMessages = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
 
-            const now = new Date();
-            const timeString = now.toLocaleTimeString('ko-KR');
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
 
             messageDiv.innerHTML = `
+                <div class="message-avatar">${sender === 'user' ? '👤' : '🤖'}</div>
                 <div class="message-content">
                     ${content}
-                    <div class="message-time">${timeString}</div>
+                    <div class="message-time">${time}</div>
+                    ${metadata && metadata.sources ? `<div class="message-sources"><strong>출처:</strong> ${metadata.sources.join(', ')}</div>` : ''}
                 </div>
             `;
 
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
-            // 채팅 히스토리에 저장
-            chatHistory.push({
-                sender: sender,
-                content: content,
-                timestamp: now
-            });
+            return messageDiv;
         }
 
-        // 성능 정보 업데이트
-        function updatePerformance(performance) {
-            const performanceDetails = document.getElementById('performanceDetails');
-            performanceDetails.innerHTML = `
-                <div class="performance-item">
-                    <span class="performance-label">총 응답 시간:</span>
-                    <span class="performance-value">${performance.total_time}s</span>
-                </div>
-                <div class="performance-item">
-                    <span class="performance-label">검색 문서 수:</span>
-                    <span class="performance-value">${performance.search_k}</span>
-                </div>
-                <div class="performance-item">
-                    <span class="performance-label">청크 크기:</span>
-                    <span class="performance-value">${performance.chunk_size}</span>
-                </div>
-                <div class="performance-item">
-                    <span class="performance-label">청크 겹침:</span>
-                    <span class="performance-value">${performance.chunk_overlap}</span>
-                </div>
-            `;
-        }
+        // 세션 통계 업데이트
+        async function updateSessionStats() {
+            if (!currentSessionId) return;
 
-        // 출처 정보 업데이트
-        function updateSources(sources) {
-            const sourcesInfo = document.getElementById('sourcesInfo');
-            if (sources && sources.length > 0) {
-                sourcesInfo.innerHTML = `
-                    <ul class="sources-list">
-                        ${sources.map(source => `<li>📄 ${source}</li>`).join('')}
-                    </ul>
-                `;
-            } else {
-                sourcesInfo.innerHTML = '<p>출처 정보가 없습니다</p>';
+            try {
+                const response = await fetch(`/sessions/${currentSessionId}/messages`);
+                const data = await response.json();
+                document.getElementById('session-stats').textContent = `메시지: ${data.count}개`;
+            } catch (error) {
+                console.error('세션 통계 업데이트 실패:', error);
             }
         }
 
-        // 로딩 표시/숨김
-        function showLoading(show) {
-            const loading = document.getElementById('loading');
-            const sendButton = document.getElementById('sendButton');
+        // 파일 업로드 처리
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            uploadFiles(files);
+        }
 
-            if (show) {
-                loading.classList.add('show');
-                sendButton.disabled = true;
-                sendButton.textContent = '처리 중...';
-            } else {
-                loading.classList.remove('show');
-                sendButton.disabled = false;
-                sendButton.textContent = '전송';
+        function handleFileDrop(event) {
+            event.preventDefault();
+            const files = event.dataTransfer.files;
+            uploadFiles(files);
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('dragover');
+        }
+
+        function handleDragLeave(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('dragover');
+        }
+
+        async function uploadFiles(files) {
+            if (files.length === 0) return;
+
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+
+            if (currentSessionId) {
+                formData.append('session_id', currentSessionId);
+            }
+
+            try {
+                const response = await fetch('/upload/multiple', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success_count > 0) {
+                    alert(`${result.success_count}개 파일이 성공적으로 업로드되었습니다.`);
+                    loadFileList();
+                } else {
+                    alert('파일 업로드에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('파일 업로드 실패:', error);
+                alert('파일 업로드에 실패했습니다.');
             }
         }
 
-        // 오류 메시지 표시/숨김
-        function showError(message) {
-            const errorMessage = document.getElementById('errorMessage');
-            errorMessage.textContent = message;
-            errorMessage.classList.add('show');
+        // 파일 목록 로드
+        async function loadFileList() {
+            try {
+                const response = await fetch('/files');
+                const data = await response.json();
+
+                const container = document.getElementById('file-list-container');
+
+                if (data.files.length === 0) {
+                    container.innerHTML = '<p style="color: #6c757d; font-size: 14px;">업로드된 파일이 없습니다.</p>';
+                    return;
+                }
+
+                container.innerHTML = data.files.map(file => `
+                    <div class="file-item">
+                        <div class="file-info">
+                            <div class="file-name">${file.filename}</div>
+                            <div class="file-meta">${file.type} • ${(file.size / 1024).toFixed(1)}KB</div>
+                        </div>
+                        <div class="file-actions">
+                            <button class="btn btn-sm btn-danger" onclick="deleteFile('${file.filename}')">삭제</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('파일 목록 로드 실패:', error);
+            }
         }
 
-        function hideError() {
-            const errorMessage = document.getElementById('errorMessage');
-            errorMessage.classList.remove('show');
+        // 파일 삭제
+        async function deleteFile(filename) {
+            if (!confirm(`파일 "${filename}"을 삭제하시겠습니까?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/files/${filename}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    alert('파일이 삭제되었습니다.');
+                    loadFileList();
+                } else {
+                    alert('파일 삭제에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('파일 삭제 실패:', error);
+                alert('파일 삭제에 실패했습니다.');
+            }
         }
 
-        // Enter 키 처리
+        // 키보드 이벤트 처리
         function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendQuestion();
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
             }
         }
 
-        // 주기적으로 시스템 상태 확인 (5분마다)
-        setInterval(checkSystemStatus, 300000);
+        // 주기적으로 시스템 상태 확인
+        setInterval(checkSystemStatus, 30000); // 30초마다
     </script>
 </body>
 

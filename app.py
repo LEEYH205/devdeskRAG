@@ -1,12 +1,17 @@
 import os
 import time
-from fastapi import FastAPI, HTTPException
+import asyncio
+import shutil
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import logging
+import uuid
+import json
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -15,6 +20,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_together import ChatTogether
 
+# 채팅 히스토리 모듈 import
+from chat_history import ChatHistoryManager
+
+# 문서 처리 모듈 import
+from document_processor import DocumentProcessor
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,8 +33,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 DB_DIR = os.getenv("CHROMA_DIR", "chroma_db")
+DATA_DIR = os.getenv("DATA_DIR", "data")
 MODE = os.getenv("MODE", "ollama")  # 'ollama' | 'together'
 EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 # 성능 최적화 설정
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
@@ -36,10 +49,23 @@ embed = None
 vs = None
 retriever = None
 llm = None
+chat_manager = None
+doc_processor = None
+
+# 지원하는 파일 확장자
+SUPPORTED_EXTENSIONS = {
+    '.pdf': 'PDF 문서',
+    '.md': 'Markdown 문서',
+    '.txt': '텍스트 문서',
+    '.doc': 'Word 문서',
+    '.docx': 'Word 문서',
+    '.html': 'HTML 문서',
+    '.htm': 'HTML 문서'
+}
 
 def initialize_components():
     """컴포넌트들을 초기화합니다"""
-    global embed, vs, retriever, llm
+    global embed, vs, retriever, llm, chat_manager, doc_processor
     
     try:
         # 임베딩 모델 초기화
@@ -78,12 +104,79 @@ def initialize_components():
             )
             logger.info(f"Using Ollama with model: {os.getenv('OLLAMA_MODEL')}")
         
+        # 채팅 히스토리 매니저 초기화
+        logger.info("Initializing chat history manager...")
+        chat_manager = ChatHistoryManager(REDIS_URL)
+        
+        # 문서 처리기 초기화
+        logger.info("Initializing document processor...")
+        doc_processor = DocumentProcessor(data_dir=DATA_DIR, db_dir=DB_DIR, embed_model=EMBED_MODEL)
+        doc_processor.initialize()
+        
         logger.info("All components initialized successfully")
         return True
         
     except Exception as e:
         logger.error(f"Error initializing components: {e}")
         return False
+
+async def get_chat_manager():
+    """채팅 히스토리 매니저 의존성"""
+    if not chat_manager:
+        raise HTTPException(status_code=500, detail="Chat history manager not initialized")
+    return chat_manager
+
+def validate_file_extension(filename: str) -> bool:
+    """파일 확장자 검증"""
+    file_ext = Path(filename).suffix.lower()
+    return file_ext in SUPPORTED_EXTENSIONS
+
+def get_file_info(filename: str) -> dict:
+    """파일 정보 반환"""
+    file_ext = Path(filename).suffix.lower()
+    return {
+        "filename": filename,
+        "extension": file_ext,
+        "type": SUPPORTED_EXTENSIONS.get(file_ext, "알 수 없는 파일"),
+        "supported": file_ext in SUPPORTED_EXTENSIONS
+    }
+
+async def save_uploaded_file(file: UploadFile, session_id: str = None) -> dict:
+    """업로드된 파일 저장"""
+    try:
+        # 파일 확장자 검증
+        if not validate_file_extension(file.filename):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"지원하지 않는 파일 형식입니다: {file.filename}"
+            )
+        
+        # data 디렉토리 생성
+        os.makedirs(DATA_DIR, exist_ok=True)
+        
+        # 고유한 파일명 생성 (중복 방지)
+        file_ext = Path(file.filename).suffix
+        unique_filename = f"{uuid.uuid4().hex}{file_ext}"
+        file_path = os.path.join(DATA_DIR, unique_filename)
+        
+        # 파일 저장
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        file_info = get_file_info(file.filename)
+        file_info.update({
+            "saved_path": file_path,
+            "saved_filename": unique_filename,
+            "session_id": session_id,
+            "upload_time": time.time()
+        })
+        
+        logger.info(f"파일 업로드 성공: {file.filename} -> {file_path}")
+        return file_info
+        
+    except Exception as e:
+        logger.error(f"파일 저장 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"파일 저장 실패: {str(e)}")
 
 PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -134,18 +227,57 @@ def process_question(question: str):
         logger.error(f"Error in process_question: {e}")
         raise e
 
+async def process_question_stream(question: str):
+    """질문을 처리하는 스트리밍 RAG 함수"""
+    try:
+        # 1. 관련 문서 검색
+        docs = retriever.invoke(question)
+        context = format_docs(docs)
+        
+        # 2. 프롬프트 생성
+        prompt = PROMPT.format(question=question, context=context)
+        
+        # 3. 스트리밍 응답 생성
+        response = llm.stream(prompt)
+        
+        for chunk in response:
+            if hasattr(chunk, 'content') and chunk.content:
+                content = chunk.content
+                yield content
+        
+    except Exception as e:
+        logger.error(f"Error in process_question_stream: {e}")
+        yield f"오류가 발생했습니다: {str(e)}"
+
 class Q(BaseModel):
     question: str
+    session_id: str = None
 
 class ChatResponse(BaseModel):
     answer: str
     performance: dict
     sources: list
+    session_id: str
+
+class SessionCreate(BaseModel):
+    user_id: str = None
+
+class SessionInfo(BaseModel):
+    session_id: str
+    user_id: str
+    created_at: str
+    last_activity: str
+    message_count: int
+
+class FileUploadResponse(BaseModel):
+    success: bool
+    message: str
+    file_info: dict = None
 
 app = FastAPI(
     title="DevDesk-RAG",
     description="나만의 ChatGPT - RAG 기반 문서 Q&A 시스템",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 # CORS 설정
@@ -163,17 +295,35 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
-    logger.info("Starting DevDesk-RAG API v2.0...")
+    logger.info("Starting DevDesk-RAG API v2.1...")
     if not initialize_components():
         logger.error("Failed to initialize components. Check your configuration.")
         raise RuntimeError("Component initialization failed")
+    
+    # Redis 연결
+    try:
+        await chat_manager.connect()
+        logger.info("Redis connection established")
+    except Exception as e:
+        logger.warning(f"Redis connection failed: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """앱 종료 시 실행되는 이벤트"""
+    if chat_manager:
+        await chat_manager.disconnect()
+        logger.info("Redis connection closed")
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(q: Q):
-    """질문에 답변합니다 (성능 모니터링 포함)"""
+async def chat(q: Q, chat_mgr: ChatHistoryManager = Depends(get_chat_manager)):
+    """질문에 답변합니다 (채팅 히스토리 저장 포함)"""
     try:
         if not llm or not retriever:
             raise HTTPException(status_code=500, detail="System not properly initialized")
+        
+        # 세션 ID가 없으면 새로 생성
+        if not q.session_id:
+            q.session_id = await chat_mgr.create_session()
         
         # 전체 처리 시간 측정
         total_start = time.time()
@@ -192,6 +342,20 @@ def chat(q: Q):
         except:
             pass
         
+        # 사용자 질문 저장
+        await chat_mgr.add_message(q.session_id, {
+            "sender": "user",
+            "content": q.question,
+            "metadata": {"sources": sources, "performance": {"total_time": total_time}}
+        })
+        
+        # 봇 답변 저장
+        await chat_mgr.add_message(q.session_id, {
+            "sender": "bot",
+            "content": result,
+            "metadata": {"sources": sources, "performance": {"total_time": total_time}}
+        })
+        
         return ChatResponse(
             answer=result,
             performance={
@@ -200,23 +364,347 @@ def chat(q: Q):
                 "chunk_size": CHUNK_SIZE,
                 "chunk_overlap": CHUNK_OVERLAP
             },
-            sources=sources
+            sources=sources,
+            session_id=q.session_id
         )
         
     except Exception as e:
         logger.error(f"Error processing question: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
 
+@app.post("/chat/stream")
+async def chat_stream(q: Q, chat_mgr: ChatHistoryManager = Depends(get_chat_manager)):
+    """질문에 답변합니다 (실시간 스트리밍 응답)"""
+    try:
+        if not llm or not retriever:
+            raise HTTPException(status_code=500, detail="System not properly initialized")
+        
+        # 세션 ID가 없으면 새로 생성
+        if not q.session_id:
+            q.session_id = await chat_mgr.create_session()
+        
+        # 출처 추출
+        sources = []
+        try:
+            docs = retriever.invoke(q.question)
+            sources = [doc.metadata.get("source", "unknown") for doc in docs]
+        except:
+            pass
+        
+        # 사용자 질문 저장
+        await chat_mgr.add_message(q.session_id, {
+            "sender": "user",
+            "content": q.question,
+            "metadata": {"sources": sources}
+        })
+        
+        async def generate_stream():
+            """스트리밍 응답 생성"""
+            try:
+                # 시작 신호
+                yield "data: {\"type\": \"start\", \"session_id\": \"" + q.session_id + "\"}\n\n"
+                
+                # 스트리밍 응답 생성
+                full_response = ""
+                async for chunk in process_question_stream(q.question):
+                    full_response += chunk
+                    # SSE 형식으로 데이터 전송
+                    yield f"data: {{\"type\": \"chunk\", \"content\": \"{chunk}\"}}\n\n"
+                    await asyncio.sleep(0.01)  # 약간의 지연으로 자연스러운 스트리밍
+                
+                # 완료 신호
+                yield f"data: {{\"type\": \"complete\", \"session_id\": \"{q.session_id}\", \"sources\": {json.dumps(sources)}}}\n\n"
+                
+                # 봇 답변 저장
+                await chat_mgr.add_message(q.session_id, {
+                    "sender": "bot",
+                    "content": full_response,
+                    "metadata": {"sources": sources}
+                })
+                
+            except Exception as e:
+                error_msg = f"스트리밍 오류: {str(e)}"
+                yield f"data: {{\"type\": \"error\", \"message\": \"{error_msg}\"}}\n\n"
+                logger.error(f"Streaming error: {e}")
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/event-stream"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in chat stream: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in chat stream: {str(e)}")
+
+@app.post("/upload", response_model=FileUploadResponse)
+async def upload_file(
+    file: UploadFile = File(...),
+    session_id: str = Form(None)
+):
+    """파일 업로드 (드래그 앤 드롭 지원)"""
+    try:
+        # 파일 크기 제한 (100MB)
+        if file.size and file.size > 100 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="파일 크기는 100MB를 초과할 수 없습니다")
+        
+        # 파일 저장
+        file_info = await save_uploaded_file(file, session_id)
+        
+        # 문서 처리 및 RAG 시스템에 추가
+        if doc_processor:
+            try:
+                success = doc_processor.process_single_file(file_info["saved_path"])
+                if success:
+                    logger.info(f"Document added to RAG system: {file_info['filename']}")
+                    file_info["rag_status"] = "added"
+                else:
+                    logger.warning(f"Failed to add document to RAG system: {file_info['filename']}")
+                    file_info["rag_status"] = "failed"
+            except Exception as e:
+                logger.warning(f"Document processing failed: {e}")
+                file_info["rag_status"] = "error"
+                file_info["rag_error"] = str(e)
+        
+        return FileUploadResponse(
+            success=True,
+            message="파일 업로드 성공",
+            file_info=file_info
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"파일 업로드 실패: {e}")
+        return FileUploadResponse(
+            success=False,
+            message=f"파일 업로드 실패: {str(e)}"
+        )
+
+@app.post("/upload/multiple")
+async def upload_multiple_files(
+    files: list[UploadFile] = File(...),
+    session_id: str = Form(None)
+):
+    """다중 파일 업로드"""
+    results = []
+    
+    for file in files:
+        try:
+            file_info = await save_uploaded_file(file, session_id)
+            
+            # 문서 처리 및 RAG 시스템에 추가
+            if doc_processor and file_info.get("success"):
+                try:
+                    success = doc_processor.process_single_file(file_info["file_info"]["saved_path"])
+                    if success:
+                        file_info["file_info"]["rag_status"] = "added"
+                        logger.info(f"Document added to RAG system: {file.filename}")
+                    else:
+                        file_info["file_info"]["rag_status"] = "failed"
+                        logger.warning(f"Failed to add document to RAG system: {file.filename}")
+                except Exception as e:
+                    logger.warning(f"Document processing failed: {e}")
+                    file_info["file_info"]["rag_status"] = "error"
+                    file_info["file_info"]["rag_error"] = str(e)
+            
+            results.append({
+                "filename": file.filename,
+                "success": True,
+                "file_info": file_info
+            })
+        except Exception as e:
+            results.append({
+                "filename": file.filename,
+                "success": False,
+                "error": str(e)
+            })
+    
+    return {
+        "message": f"{len(files)}개 파일 처리 완료",
+        "results": results,
+        "success_count": sum(1 for r in results if r["success"]),
+        "error_count": sum(1 for r in results if not r["success"])
+    }
+
+@app.get("/files")
+async def list_uploaded_files():
+    """업로드된 파일 목록 조회"""
+    try:
+        if not os.path.exists(DATA_DIR):
+            return {"files": [], "count": 0}
+        
+        files = []
+        for filename in os.listdir(DATA_DIR):
+            file_path = os.path.join(DATA_DIR, filename)
+            if os.path.isfile(file_path):
+                file_info = get_file_info(filename)
+                file_info.update({
+                    "size": os.path.getsize(file_path),
+                    "modified": os.path.getmtime(file_path)
+                })
+                files.append(file_info)
+        
+        # 수정 시간순 정렬 (최신 파일이 먼저)
+        files.sort(key=lambda x: x["modified"], reverse=True)
+        
+        return {
+            "files": files,
+            "count": len(files),
+            "supported_extensions": list(SUPPORTED_EXTENSIONS.keys())
+        }
+        
+    except Exception as e:
+        logger.error(f"파일 목록 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"파일 목록 조회 실패: {str(e)}")
+
+@app.delete("/files/{filename}")
+async def delete_file(filename: str):
+    """업로드된 파일 삭제"""
+    try:
+        file_path = os.path.join(DATA_DIR, filename)
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
+        
+        # RAG 시스템에서도 문서 제거
+        if doc_processor:
+            try:
+                doc_processor.remove_document(file_path)
+                logger.info(f"Document removed from RAG system: {filename}")
+            except Exception as e:
+                logger.warning(f"Failed to remove document from RAG system: {e}")
+        
+        os.remove(file_path)
+        logger.info(f"파일 삭제 완료: {filename}")
+        
+        return {"message": f"파일 {filename} 삭제 완료"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"파일 삭제 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"파일 삭제 실패: {str(e)}")
+
+@app.post("/documents/process")
+async def process_all_documents():
+    """모든 문서를 RAG 시스템에 처리"""
+    try:
+        if not doc_processor:
+            raise HTTPException(status_code=500, detail="Document processor not initialized")
+        
+        result = doc_processor.process_all_files()
+        return result
+        
+    except Exception as e:
+        logger.error(f"Document processing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+
+@app.get("/documents/status")
+async def get_document_status():
+    """RAG 시스템의 문서 상태 조회"""
+    try:
+        if not doc_processor:
+            raise HTTPException(status_code=500, detail="Document processor not initialized")
+        
+        info = doc_processor.get_vector_store_info()
+        return info
+        
+    except Exception as e:
+        logger.error(f"Failed to get document status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get document status: {str(e)}")
+
+@app.post("/documents/refresh")
+async def refresh_rag_system():
+    """RAG 시스템 새로고침 (모든 문서 재처리)"""
+    try:
+        if not doc_processor:
+            raise HTTPException(status_code=500, detail="Document processor not initialized")
+        
+        # 기존 벡터 스토어 초기화
+        if doc_processor:
+            doc_processor.remove_document("")  # 빈 문자열로 전체 초기화
+            logger.info("Vector store cleared")
+        
+        # 모든 문서 재처리
+        result = doc_processor.process_all_files()
+        return {
+            "message": "RAG system refreshed successfully",
+            "result": result
+        }
+        
+    except Exception as e:
+        logger.error(f"RAG system refresh failed: {e}")
+        raise HTTPException(status_code=500, detail=f"RAG system refresh failed: {str(e)}")
+
+@app.post("/sessions", response_model=SessionInfo)
+async def create_session(session_data: SessionCreate, chat_mgr: ChatHistoryManager = Depends(get_chat_manager)):
+    """새로운 채팅 세션을 생성합니다"""
+    try:
+        session_id = await chat_mgr.create_session(session_data.user_id)
+        session_info = await chat_mgr.redis.hgetall(f"session:{session_id}")
+        
+        return SessionInfo(
+            session_id=session_id,
+            user_id=session_info.get("user_id", ""),
+            created_at=session_info.get("created_at", ""),
+            last_activity=session_info.get("last_activity", ""),
+            message_count=int(session_info.get("message_count", 0))
+        )
+    except Exception as e:
+        logger.error(f"Error creating session: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating session: {str(e)}")
+
+@app.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str, limit: int = 50, chat_mgr: ChatHistoryManager = Depends(get_chat_manager)):
+    """세션의 메시지 목록을 조회합니다"""
+    try:
+        messages = await chat_mgr.get_session_messages(session_id, limit)
+        return {"session_id": session_id, "messages": messages, "count": len(messages)}
+    except Exception as e:
+        logger.error(f"Error getting session messages: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting session messages: {str(e)}")
+
+@app.get("/sessions/{session_id}/search")
+async def search_session_messages(session_id: str, query: str, chat_mgr: ChatHistoryManager = Depends(get_chat_manager)):
+    """세션 내 메시지를 검색합니다"""
+    try:
+        results = await chat_mgr.search_messages(session_id, query)
+        return {"session_id": session_id, "query": query, "results": results, "count": len(results)}
+    except Exception as e:
+        logger.error(f"Error searching session messages: {e}")
+        raise HTTPException(status_code=500, detail=f"Error searching session messages: {str(e)}")
+
+@app.delete("/sessions/{session_id}")
+async def delete_session(session_id: str, chat_mgr: ChatHistoryManager = Depends(get_chat_manager)):
+    """세션을 삭제합니다"""
+    try:
+        success = await chat_mgr.delete_session(session_id)
+        if success:
+            return {"message": f"Session {session_id} deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Session not found")
+    except Exception as e:
+        logger.error(f"Error deleting session: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting session: {str(e)}")
+
 @app.get("/health")
 def health():
     """시스템 상태를 확인합니다"""
     try:
         db_status = os.path.exists(DB_DIR) and len(os.listdir(DB_DIR)) > 0
+        redis_status = chat_manager is not None and chat_manager.redis is not None
+        
         return {
-            "status": "healthy" if db_status else "warning",
+            "status": "healthy" if db_status and redis_status else "warning",
             "mode": MODE,
             "model": os.getenv("OLLAMA_MODEL" if MODE == "ollama" else "TOGETHER_MODEL"),
             "vector_db": db_status,
+            "redis": redis_status,
             "performance_config": {
                 "chunk_size": CHUNK_SIZE,
                 "chunk_overlap": CHUNK_OVERLAP,
@@ -236,9 +724,9 @@ async def get_ui():
 @app.get("/")
 def root():
     return {
-        "message": "DevDesk-RAG API v2.0", 
-        "endpoints": ["/chat", "/health", "/ui", "/config"],
-        "features": ["Performance Monitoring", "Optimized RAG", "CORS Support", "Web UI"],
+        "message": "DevDesk-RAG API v2.1", 
+        "endpoints": ["/chat", "/chat/stream", "/upload", "/files", "/sessions", "/health", "/ui", "/config"],
+        "features": ["Performance Monitoring", "Optimized RAG", "CORS Support", "Web UI", "Chat History", "Streaming Response", "File Upload"],
         "web_ui": "/ui"
     }
 
@@ -248,6 +736,9 @@ def get_config():
     return {
         "mode": MODE,
         "embed_model": EMBED_MODEL,
+        "redis_url": REDIS_URL,
+        "data_dir": DATA_DIR,
+        "supported_extensions": list(SUPPORTED_EXTENSIONS.keys()),
         "performance": {
             "chunk_size": CHUNK_SIZE,
             "chunk_overlap": CHUNK_OVERLAP,
