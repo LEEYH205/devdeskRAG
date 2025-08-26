@@ -1,4 +1,4 @@
-# 🚀 DevDesk-RAG v2.1
+# 🚀 DevDesk-RAG v2.1.1
 
 **나만의 ChatGPT - RAG 기반 문서 Q&A 시스템**
 
@@ -11,8 +11,9 @@ DevDesk-RAG는 LangChain과 Ollama를 활용한 로컬 RAG(Retrieval-Augmented G
 - **다양한 문서 지원**: PDF, Markdown, 웹페이지 크롤링
 - **한국어 최적화**: EXAONE 모델을 통한 한국어 이해력 향상
 - **성능 모니터링**: 실시간 응답 시간 및 시스템 상태 추적
+- **LoRA 지원**: 사용자 맞춤형 모델 훈련 및 적용 가능
 
-### 🚀 **v2.1 구현 완료 기능** ✅
+### 🚀 **v2.1.1 구현 완료 기능** ✅
 - **웹 UI**: 현대적이고 아름다운 채팅 인터페이스
 - **하이브리드 검색**: 벡터 검색 + BM25 + 재랭킹
 - **Docker 컨테이너화**: 쉬운 배포 및 확장
@@ -20,8 +21,11 @@ DevDesk-RAG는 LangChain과 Ollama를 활용한 로컬 RAG(Retrieval-Augmented G
 - **대화형 인터페이스 고도화**: 채팅 히스토리 저장, 실시간 스트리밍 응답, 파일 업로드
 - **Redis 기반 채팅 히스토리**: 영구 저장 및 세션 관리
 - **실시간 문서 처리**: 업로드된 파일 자동 인덱싱
+- **코드 최적화**: 성능 모니터링, 에러 처리, 검색 알고리즘 개선
+- **LoRA 훈련 준비**: DevDesk-RAG 특화 모델 훈련 환경 구축
 
 ### 🔮 **v2.2+ 계획 기능** (개발 예정)
+- **LoRA 모델 훈련**: DevDesk-RAG 특화 한국어 모델 개발
 - **하이브리드 검색 강화**: 다중 검색 알고리즘 통합 및 재랭킹 시스템
 - **멀티모달 지원**: 이미지+텍스트 처리, PDF 이미지 분석, OCR 기능
 - **자동화 시스템**: 문서 자동 동기화, 합성데이터 생성
@@ -246,157 +250,121 @@ devdesk-rag/
 └── README.md             # 프로젝트 문서
 ```
 
-## 🚀 **성능 최적화**
+## 🔧 **EXAONE 모델 및 LoRA 지원**
 
-### **권장 설정**
+### **🎯 지원 모델**
+- **exaone3.5:7.8b**: 기본 모델, 한국어 최적화 (4.8GB)
+- **exaone-deep:7.8b**: 고성능 모델, 심화 학습용
+- **exaone3.5:7.8b-q4_0**: 4비트 양자화 (1.2GB, N100 지원)
+- **exaone3.5:7.8b-q8_0**: 8비트 양자화 (2.4GB, 균형)
 
+### **🚀 LoRA (Low-Rank Adaptation) 지원**
+- **사용자 맞춤**: DevDesk-RAG 특화 모델 훈련 가능
+- **도메인 특화**: 의료, 법률, 기술 문서 등 특정 분야 최적화
+- **메모리 효율**: 작은 어댑터만 추가하여 모델 성능 향상
+- **한국어 특화**: 한국어 문서 처리에 최적화된 LoRA 훈련
+
+### **⚡ 양자화 지원**
+```
+모델                    | 메모리 | 속도 | 정확도 | 권장 환경
+------------------------|--------|------|--------|------------
+exaone3.5:7.8b         | 4.8GB  | 보통 | ⭐⭐⭐⭐⭐ | 개발/테스트
+exaone3.5:7.8b-q8_0    | 2.4GB  | 빠름 | ⭐⭐⭐⭐  | 프로덕션
+exaone3.5:7.8b-q4_0    | 1.2GB  | 매우빠름 | ⭐⭐⭐   | N100/임베디드
+exaone3.5:7.8b-q4_1    | 1.0GB  | 매우빠름 | ⭐⭐⭐   | 리소스 제한
+```
+
+## 🎯 **LoRA 모델 훈련 가이드**
+
+### **🔧 훈련 환경 준비**
 ```bash
-# 고성능 환경
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=150
-SEARCH_K=6
-TEMPERATURE=0.05
+# 필요한 라이브러리 설치
+pip install torch transformers peft datasets accelerate
+pip install bitsandbytes trl wandb sentencepiece
 
-# 메모리 제한 환경
-CHUNK_SIZE=600
-CHUNK_OVERLAP=80
-SEARCH_K=3
-TEMPERATURE=0.1
+# Apple Silicon Mac MPS 지원 확인
+python -c "import torch; print(f'MPS: {torch.backends.mps.is_available()}')"
 ```
 
-### **모니터링 지표**
-
-- **응답 시간**: 평균 2-5초
-- **검색 정확도**: 85-95%
-- **메모리 사용량**: 2-4GB
-- **동시 사용자**: 단일 사용자 최적화
-
-## 🔧 **Redis 채팅 히스토리 관리**
-
-### **Redis 백업 파일 위치**
-```
-devdesk-rag/
-└── redis_backup/
-    └── dump.rdb          # 채팅 히스토리 백업 파일
+### **📚 훈련 데이터 준비**
+```python
+# DevDesk-RAG 특화 훈련 데이터 예시
+training_data = [
+    {
+        "instruction": "DevDesk-RAG에서 파일을 업로드하는 방법을 알려주세요",
+        "input": "",
+        "output": "DevDesk-RAG에서 파일 업로드는 다음과 같이 할 수 있습니다:\n\n1. 웹 UI 접속: http://localhost:8000/ui\n2. 파일 드래그 앤 드롭: data/ 폴더에 파일을 끌어다 놓기\n3. 자동 인덱싱: document_processor.py가 실시간으로 처리\n4. 즉시 사용: 업로드 직후 질문 가능\n\n지원하는 파일 형식: PDF, Markdown, TXT, HTML, Word 문서"
+    }
+    # ... 더 많은 DevDesk-RAG 특화 데이터
+]
 ```
 
-### **Redis 설정**
-- **포트**: 6379 (기본)
-- **백업 위치**: 프로젝트 폴더 내 `redis_backup/`
-- **데이터 지속성**: RDB 스냅샷 방식
-- **Git 추적**: 백업 폴더는 `.gitignore`에 포함
+### **🚀 LoRA 훈련 실행**
+```python
+# train_lora.py
+from peft import LoraConfig, get_peft_model, TaskType
 
-### **채팅 히스토리 기능**
-- **세션 관리**: 사용자별 대화 세션 생성 및 관리
-- **메시지 저장**: 질문과 답변의 완전한 기록
-- **검색 기능**: 과거 대화 내용 검색
-- **자동 정리**: 오래된 세션 자동 삭제
+# LoRA 설정
+lora_config = LoraConfig(
+    r=16,  # LoRA 랭크
+    lora_alpha=32,
+    target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+    lora_dropout=0.1,
+    bias="none",
+    task_type=TaskType.CAUSAL_LM
+)
 
-## 🔍 **문제 해결**
+# 훈련 실행
+# ... 훈련 코드
+```
 
-### **일반적인 문제**
-
-#### **Ollama 연결 오류**
+### **📱 훈련된 모델 DevDesk-RAG 적용**
 ```bash
-# Ollama 서비스 상태 확인
-brew services list | grep ollama
+# Modelfile 생성
+cat > Modelfile << 'EOF'
+FROM exaone3.5:7.8b
+ADAPTER ./devdesk_rag_lora/adapter_model.safetensors
+PARAMETER temperature 0.7
+SYSTEM "당신은 DevDesk-RAG 시스템에 특화된 AI 어시스턴트입니다."
+EOF
 
-# Ollama 재시작
-brew services restart ollama
+# Ollama에 커스텀 모델 추가
+ollama create devdesk-rag-lora -f Modelfile
 
-# 모델 다운로드 확인
-ollama list
+# DevDesk-RAG에서 사용
+OLLAMA_MODEL=devdesk-rag-lora python app.py
 ```
 
-#### **메모리 부족**
-```bash
-# 청킹 파라미터 조정
-CHUNK_SIZE=600
-CHUNK_OVERLAP=80
-
-# 검색 범위 축소
-SEARCH_K=3
+### **⏱️ 훈련 시간 예상**
 ```
-
-#### **Docker 컨테이너 오류**
-```bash
-# 컨테이너 로그 확인
-docker-compose logs devdesk-rag
-
-# 컨테이너 재시작
-docker-compose restart devdesk-rag
-```
-
-#### **Redis 연결 오류**
-```bash
-# Redis 서비스 상태 확인
-brew services list | grep redis
-
-# Redis 재시작
-brew services restart redis
-
-# Redis 백업 파일 확인
-ls -la redis_backup/
-```
-
-#### **채팅 히스토리 손실**
-```bash
-# Redis 백업 파일 복원
-cp redis_backup/dump.rdb /opt/homebrew/var/db/redis/
-
-# Redis 재시작
-brew services restart redis
-```
-
-### **로그 확인**
-
-```bash
-# 애플리케이션 로그
-tail -f app.log
-
-# Docker 로그
-docker-compose logs -f
-
-# Nginx 로그
-docker exec devdesk-nginx tail -f /var/log/nginx/access.log
-```
-
-## 📈 **모니터링 및 알림**
-
-### **시스템 메트릭**
-
-- **API 응답 시간**: `/health` 엔드포인트
-- **메모리 사용량**: Docker stats
-- **검색 품질**: 사용자 피드백 기반
-
-### **알림 설정**
-
-```bash
-# 헬스체크 스크립트
-while true; do
-  if ! curl -s http://localhost:8000/health > /dev/null; then
-    echo "시스템 오류 발생: $(date)" | mail -s "DevDesk-RAG Alert" admin@example.com
-  fi
-  sleep 300
-done
+데이터 크기    | Apple Silicon | GPU 환경 | 품질
+---------------|---------------|----------|-------
+20개 샘플      | 2-3시간      | 1-2시간  | 기본
+50개 샘플      | 5-7시간      | 3-4시간  | 양호
+100개 샘플     | 10-12시간    | 6-8시간  | 우수
+200개 샘플     | 20-24시간    | 12-15시간 | 최고
 ```
 
 ## 🛣️ **로드맵**
 
-### **v2.1 - 대화형 인터페이스 고도화** ✅ **완료**
-- [x] **채팅 히스토리 저장**: Redis 기반 대화 기록 관리
-- [x] **실시간 스트리밍 응답**: Server-Sent Events를 통한 점진적 답변 생성
-- [x] **파일 업로드 기능**: 드래그 앤 드롭으로 문서 추가
-- [x] **Redis 백업 관리**: 프로젝트 폴더 내 채팅 히스토리 보관
-- [ ] **사용자 인증 및 권한 관리**: API 키 기반 보안 시스템
-- [ ] **문서 버전 관리**: 변경 이력 추적 및 롤백 기능
+### **v2.1.1 - LoRA 훈련 및 모델 최적화** ✅ **완료**
+- [x] **코드 최적화**: 성능 모니터링, 에러 처리 개선
+- [x] **검색 알고리즘**: 하이브리드 검색 최적화
+- [x] **문서 처리**: 실시간 인덱싱 로직 개선
+- [x] **Docker 환경**: 환경 변수 최적화
+- [x] **LoRA 준비**: 훈련 환경 및 가이드 구축
 
-### **v2.2 - 검색 및 분석 강화** 🚧 **개발 중**
+### **v2.2 - LoRA 모델 훈련 및 적용** 🚧 **개발 중**
+- [ ] **DevDesk-RAG 특화 LoRA**: 사용자 맞춤 모델 훈련
+- [ ] **도메인별 특화**: 의료, 법률, 기술 문서 LoRA
+- [ ] **성능 비교**: 기본 모델 vs LoRA 모델 벤치마크
+- [ ] **자동화**: LoRA 훈련 파이프라인 구축
+
+### **v2.3 - 검색 및 분석 강화** 📋 **계획**
 - [ ] **하이브리드 검색 강화**: 다중 검색 알고리즘 통합
 - [ ] **재랭킹 시스템**: Together API Rerank를 통한 검색 품질 향상
 - [ ] **고급 분석 대시보드**: 검색 성능, 사용 패턴 분석
 - [ ] **API 레이트 리미팅**: 사용량 제한 및 모니터링
-- [ ] **검색 결과 필터링**: 날짜, 출처, 문서 타입별 필터
 
 ### **v2.3 - 멀티모달 지원**
 - [ ] **이미지 + 텍스트 처리**: CLIP 모델을 통한 이미지 이해
