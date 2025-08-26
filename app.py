@@ -30,6 +30,9 @@ from document_processor import DocumentProcessor
 # 성능 모니터링 모듈 import
 from performance.performance_monitor import record_chat_metrics, get_performance_dashboard_data
 
+# 고급 검색 알고리즘 모듈 import
+from advanced_search.advanced_search import advanced_search_engine, get_search_insights
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,6 +51,10 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 SEARCH_K = int(os.getenv("SEARCH_K", "4"))
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
+
+# 고급 검색 알고리즘 설정
+USE_ADVANCED_SEARCH = os.getenv("USE_ADVANCED_SEARCH", "true").lower() == "true"
+ADVANCED_SEARCH_ALGORITHM = os.getenv("ADVANCED_SEARCH_ALGORITHM", "weighted_hybrid")
 
 # 전역 변수
 embed = None
@@ -214,12 +221,39 @@ def format_docs(docs):
         lines.append(f"- ({src}) {snippet}")
     return "\n".join(lines)
 
-def process_question(question: str):
-    """질문을 처리하는 최적화된 RAG 함수"""
+def process_question(question: str, user_id: str = None, use_advanced_search: bool = True):
+    """질문을 처리하는 최적화된 RAG 함수 (고급 검색 알고리즘 통합)"""
     try:
-        # 1. 관련 문서 검색 (성능 측정)
+        # 1. 고급 검색 알고리즘을 사용한 문서 검색
         search_start = time.time()
-        docs = retriever.invoke(question)  # 최신 메서드 사용
+        
+        if use_advanced_search and advanced_search_engine:
+            # 고급 검색 사용
+            search_results = advanced_search_engine.search(
+                query=question,
+                user_id=user_id or "anonymous"
+            )
+            
+            # SearchResult를 Document로 변환
+            docs = []
+            for result in search_results:
+                from langchain_core.documents import Document
+                doc = Document(
+                    page_content=result.content,
+                    metadata=result.metadata
+                )
+                docs.append(doc)
+            
+            # 검색 품질 메트릭 추출
+            search_quality = result.relevance_score if hasattr(result, 'relevance_score') else 0.8
+            algorithm_used = "advanced_search"
+            
+        else:
+            # 기존 검색 사용
+            docs = retriever.invoke(question)
+            search_quality = 0.7  # 기본값
+            algorithm_used = "traditional_rag"
+        
         search_time = time.time() - search_start
         
         # 2. 문서 포맷팅
@@ -237,21 +271,22 @@ def process_question(question: str):
         response = llm.invoke(prompt)
         llm_time = time.time() - llm_start
         
-        # 성능 로깅
-        logger.info(f"Performance - Search: {search_time:.3f}s, Format: {format_time:.3f}s, Prompt: {prompt_time:.3f}s, LLM: {llm_time:.3f}s")
+        # 성능 로깅 (고급 검색 정보 포함)
+        logger.info(f"Performance - Search: {search_time:.3f}s, Format: {format_time:.3f}s, Prompt: {prompt_time:.3f}s, LLM: {llm_time:.3f}s, Algorithm: {algorithm_used}, Quality: {search_quality:.3f}")
         
-        # 성능 메트릭 기록
+        # 성능 메트릭 기록 (고급 검색 메트릭 포함)
         try:
             record_chat_metrics(
                 session_id="",  # 나중에 세션 ID 추가
-                user_id="",     # 나중에 사용자 ID 추가
+                user_id=user_id or "",
                 question=question,
                 search_time=search_time,
                 format_time=format_time,
                 prompt_time=prompt_time,
                 llm_time=llm_time,
                 search_results_count=len(docs),
-                chunks_retrieved=len(docs)
+                chunks_retrieved=len(docs),
+                relevance_score=search_quality
             )
         except Exception as e:
             logger.error(f"성능 메트릭 기록 실패: {e}")
@@ -762,6 +797,11 @@ async def get_ui():
     """웹 UI 페이지를 제공합니다"""
     return FileResponse("static/index.html")
 
+@app.get("/advanced_search_dashboard")
+async def get_advanced_search_dashboard():
+    """고급 검색 알고리즘 대시보드 페이지를 제공합니다"""
+    return FileResponse("advanced_search/advanced_search_dashboard.html")
+
 @app.get("/")
 def root():
     return {
@@ -785,6 +825,11 @@ def get_config():
             "chunk_overlap": CHUNK_OVERLAP,
             "search_k": SEARCH_K,
             "temperature": TEMPERATURE
+        },
+        "advanced_search": {
+            "enabled": USE_ADVANCED_SEARCH,
+            "algorithm": ADVANCED_SEARCH_ALGORITHM,
+            "available_algorithms": ["vector_only", "bm25_only", "hybrid", "weighted_hybrid", "adaptive"]
         }
     }
 
@@ -804,9 +849,9 @@ def get_performance_dashboard():
 
 @app.get("/performance/session/{session_id}")
 def get_session_performance(session_id: str):
-    """특정 세션의 성능 메트릭을 조회합니다"""
+    """특정 세션의 성능 메트릭을 제공합니다"""
     try:
-        from performance_monitor import performance_monitor
+        from performance.performance_monitor import performance_monitor
         session_metrics = performance_monitor.get_session_metrics(session_id)
         return {
             "status": "success",
@@ -817,6 +862,85 @@ def get_session_performance(session_id: str):
     except Exception as e:
         logger.error(f"세션 성능 메트릭 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=f"세션 성능 메트릭 조회 실패: {str(e)}")
+
+# ===== 고급 검색 알고리즘 API 엔드포인트 =====
+
+@app.get("/search/advanced")
+def advanced_search(query: str, user_id: str = None, algorithm: str = None):
+    """고급 검색 알고리즘을 사용한 검색을 실행합니다"""
+    try:
+        results = advanced_search_engine.search(
+            query=query,
+            user_id=user_id or "anonymous",
+            algorithm=algorithm
+        )
+        
+        return {
+            "status": "success",
+            "query": query,
+            "algorithm": algorithm or "weighted_hybrid",
+            "results": [r.to_dict() for r in results],
+            "count": len(results),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"고급 검색 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"고급 검색 실패: {str(e)}")
+
+@app.get("/search/insights")
+def get_search_insights():
+    """고급 검색 시스템의 성능 인사이트를 제공합니다"""
+    try:
+        insights = get_search_insights()
+        return {
+            "status": "success",
+            "insights": insights,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"검색 인사이트 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"검색 인사이트 조회 실패: {str(e)}")
+
+@app.get("/search/experiments")
+def get_search_experiments():
+    """현재 진행 중인 A/B 테스트 실험 정보를 제공합니다"""
+    try:
+        experiments = advanced_search_engine.ab_test_framework.experiments
+        return {
+            "status": "success",
+            "experiments": experiments,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"A/B 테스트 실험 정보 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"고급 검색 실험 정보 조회 실패: {str(e)}")
+
+@app.post("/search/experiments")
+def create_search_experiment(experiment_data: dict):
+    """새로운 A/B 테스트 실험을 생성합니다"""
+    try:
+        experiment_id = experiment_data.get("experiment_id")
+        variants = experiment_data.get("variants", [])
+        traffic_split = experiment_data.get("traffic_split")
+        
+        success = advanced_search_engine.ab_test_framework.create_experiment(
+            experiment_id=experiment_id,
+            variants=variants,
+            traffic_split=traffic_split
+        )
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"실험 {experiment_id} 생성 완료",
+                "experiment_id": experiment_id
+            }
+        else:
+            raise HTTPException(status_code=400, detail="실험 생성 실패")
+            
+    except Exception as e:
+        logger.error(f"A/B 테스트 실험 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"A/B 테스트 실험 생성 실패: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

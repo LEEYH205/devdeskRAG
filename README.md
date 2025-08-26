@@ -1,4 +1,4 @@
-# 🚀 DevDesk-RAG v2.1.4
+# 🚀 DevDesk-RAG v2.1.5
 
 **나만의 ChatGPT - RAG 기반 문서 Q&A 시스템**
 
@@ -13,7 +13,7 @@ DevDesk-RAG는 LangChain과 Ollama를 활용한 로컬 RAG(Retrieval-Augmented G
 - **성능 모니터링**: 실시간 응답 시간 및 시스템 상태 추적
 - **LoRA 지원**: 사용자 맞춤형 모델 훈련 및 적용 가능
 
-### 🚀 **v2.1.4 구현 완료 기능** ✅
+### 🚀 **v2.1.5 구현 완료 기능** ✅
 - **웹 UI**: 현대적이고 아름다운 채팅 인터페이스
 - **하이브리드 검색**: 벡터 검색 + BM25 + 재랭킹
 - **Docker 컨테이너화**: 쉬운 배포 및 확장
@@ -27,6 +27,7 @@ DevDesk-RAG는 LangChain과 Ollama를 활용한 로컬 RAG(Retrieval-Augmented G
 - **성능 모니터링 시스템**: 실시간 메트릭 수집, 대시보드, 데이터베이스 저장
 - **사용자 피드백 시스템**: 별점 평가, 개선 제안, 감정 분석, 인사이트 생성
 - **고급 검색 알고리즘**: 동적 가중치 최적화, A/B 테스트, 성능 병목 분석, 자동 최적화
+- **고급 검색 시스템 통합**: 기존 RAG 시스템과 완전 통합, 실시간 대시보드, API 엔드포인트
 
 ### 🔮 **v2.2+ 계획 기능** (개발 예정)
 - **LoRA 모델 훈련**: DevDesk-RAG 특화 한국어 모델 개발
@@ -620,4 +621,4 @@ insights = advanced_search_engine.get_performance_insights()
 
 ---
 
-**DevDesk-RAG v2.0** - 나만의 ChatGPT를 만들어보세요! 🚀
+**DevDesk-RAG v2.1** - 나만의 ChatGPT를 만들어보세요! 🚀
