@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  devdesk-rag:
+    build: .
+    container_name: devdesk-rag
+    ports:
+      - "8000:8000"
+    environment:
+      - MODE=ollama
+      - OLLAMA_MODEL=exaone3.5:7.8b
+      - CHROMA_DIR=chroma_db
+      - EMBED_MODEL=BAAI/bge-m3
+      - CHUNK_SIZE=800
+      - CHUNK_OVERLAP=120
+      - SEARCH_K=4
+      - TEMPERATURE=0.1
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./data:/app/data
+      - ./static:/app/static
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - devdesk-network
+
+  # Ollama 서비스 (로컬 LLM)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - devdesk-network
+
+  # Redis (캐싱 및 세션 관리)
+  redis:
+    image: redis:7-alpine
+    container_name: devdesk-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - devdesk-network
+
+  # Nginx (리버스 프록시 및 정적 파일 서빙)
+  nginx:
+    image: nginx:alpine
+    container_name: devdesk-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./static:/usr/share/nginx/html/static
+    depends_on:
+      - devdesk-rag
+    restart: unless-stopped
+    networks:
+      - devdesk-network
+
+volumes:
+  ollama_data:
+  redis_data:
+
+networks:
+  devdesk-network:
+    driver: bridge
