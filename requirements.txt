@@ -17,3 +17,10 @@ python-dotenv>=1.0.1
 rank-bm25>=0.2.2
 redis>=5.0.0
 python-multipart>=0.0.6
+
+# 성능 모니터링 및 대시보드
+psutil>=5.9.0
+plotly>=5.15.0
+dash>=2.14.0
+matplotlib>=3.7.0
+prometheus-client>=0.17.0

@@ -27,6 +27,9 @@ from chat_history import ChatHistoryManager
 # 문서 처리 모듈 import
 from document_processor import DocumentProcessor
 
+# 성능 모니터링 모듈 import
+from performance.performance_monitor import record_chat_metrics, get_performance_dashboard_data
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -237,6 +240,22 @@ def process_question(question: str):
         # 성능 로깅
         logger.info(f"Performance - Search: {search_time:.3f}s, Format: {format_time:.3f}s, Prompt: {prompt_time:.3f}s, LLM: {llm_time:.3f}s")
         
+        # 성능 메트릭 기록
+        try:
+            record_chat_metrics(
+                session_id="",  # 나중에 세션 ID 추가
+                user_id="",     # 나중에 사용자 ID 추가
+                question=question,
+                search_time=search_time,
+                format_time=format_time,
+                prompt_time=prompt_time,
+                llm_time=llm_time,
+                search_results_count=len(docs),
+                chunks_retrieved=len(docs)
+            )
+        except Exception as e:
+            logger.error(f"성능 메트릭 기록 실패: {e}")
+        
         return response.content
         
     except Exception as e:
@@ -307,6 +326,12 @@ app.add_middleware(
 
 # 정적 파일 서빙
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 성능 대시보드 정적 파일 서빙
+@app.get("/performance_dashboard.html")
+async def get_performance_dashboard():
+    """성능 모니터링 대시보드 페이지를 제공합니다"""
+    return FileResponse("performance/performance_dashboard.html")
 
 @app.on_event("startup")
 async def startup_event():
@@ -762,6 +787,36 @@ def get_config():
             "temperature": TEMPERATURE
         }
     }
+
+@app.get("/performance/dashboard")
+def get_performance_dashboard():
+    """성능 모니터링 대시보드 데이터를 제공합니다"""
+    try:
+        dashboard_data = get_performance_dashboard_data()
+        return {
+            "status": "success",
+            "data": dashboard_data,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"성능 대시보드 데이터 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"성능 대시보드 데이터 조회 실패: {str(e)}")
+
+@app.get("/performance/session/{session_id}")
+def get_session_performance(session_id: str):
+    """특정 세션의 성능 메트릭을 조회합니다"""
+    try:
+        from performance_monitor import performance_monitor
+        session_metrics = performance_monitor.get_session_metrics(session_id)
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "metrics": session_metrics,
+            "count": len(session_metrics)
+        }
+    except Exception as e:
+        logger.error(f"세션 성능 메트릭 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"세션 성능 메트릭 조회 실패: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

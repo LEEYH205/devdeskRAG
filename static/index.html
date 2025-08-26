@@ -42,6 +42,30 @@
             opacity: 0.9;
         }
 
+        .header-actions {
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .btn-dashboard {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: transform 0.3s ease;
+        }
+
+        .btn-dashboard:hover {
+            transform: translateY(-2px);
+        }
+
         .main-content {
             display: grid;
             grid-template-columns: 300px 1fr;
@@ -424,6 +448,11 @@
         <div class="header">
             <h1>🚀 DevDesk-RAG v2.1</h1>
             <p>대화형 인터페이스 - 채팅 히스토리, 스트리밍 응답, 파일 업로드</p>
+            <div class="header-actions">
+                <a href="/performance_dashboard.html" class="btn-dashboard" target="_blank">
+                    📊 성능 모니터링 대시보드
+                </a>
+            </div>
         </div>
 
         <div class="main-content">

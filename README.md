@@ -13,7 +13,7 @@ DevDesk-RAG는 LangChain과 Ollama를 활용한 로컬 RAG(Retrieval-Augmented G
 - **성능 모니터링**: 실시간 응답 시간 및 시스템 상태 추적
 - **LoRA 지원**: 사용자 맞춤형 모델 훈련 및 적용 가능
 
-### 🚀 **v2.1.2 구현 완료 기능** ✅
+### 🚀 **v2.1.3 구현 완료 기능** ✅
 - **웹 UI**: 현대적이고 아름다운 채팅 인터페이스
 - **하이브리드 검색**: 벡터 검색 + BM25 + 재랭킹
 - **Docker 컨테이너화**: 쉬운 배포 및 확장
@@ -24,6 +24,7 @@ DevDesk-RAG는 LangChain과 Ollama를 활용한 로컬 RAG(Retrieval-Augmented G
 - **코드 최적화**: 성능 모니터링, 에러 처리, 검색 알고리즘 개선
 - **LoRA 훈련 준비**: DevDesk-RAG 특화 모델 훈련 환경 구축
 - **DevDesk-RAG 특화 모델**: Modelfile 기반 커스텀 LoRA 모델 성공 적용
+- **성능 모니터링 시스템**: 실시간 메트릭 수집, 대시보드, 데이터베이스 저장
 
 ### 🔮 **v2.2+ 계획 기능** (개발 예정)
 - **LoRA 모델 훈련**: DevDesk-RAG 특화 한국어 모델 개발
@@ -237,6 +238,10 @@ devdesk-rag/
 ├── advanced_search.py     # 고급 검색 모듈
 ├── chat_history.py        # Redis 기반 채팅 히스토리 관리
 ├── document_processor.py  # 실시간 문서 처리 및 인덱싱
+├── performance/           # 성능 모니터링 시스템
+│   ├── performance_monitor.py
+│   ├── performance_dashboard.html
+│   └── performance_metrics.db
 ├── requirements.txt       # Python 의존성
 ├── .env                   # 환경 설정
 ├── static/                # 웹 UI 정적 파일
@@ -250,6 +255,53 @@ devdesk-rag/
 ├── deploy.sh             # 배포 스크립트
 └── README.md             # 프로젝트 문서
 ```
+
+## 📊 **성능 모니터링 시스템**
+
+### **🚀 실시간 성능 추적**
+- **응답 시간 메트릭**: Search, Format, Prompt, LLM 단계별 시간 측정
+- **검색 품질 분석**: 관련성 점수, 검색 결과 수, 청크 수 추적
+- **시스템 리소스 모니터링**: CPU, 메모리, 디스크, 네트워크 사용량
+- **API 호출 통계**: 성공률, 에러율, 응답 시간 분포
+
+### **📈 성능 대시보드**
+- **실시간 차트**: Plotly 기반 인터랙티브 차트
+- **메트릭 카드**: 주요 지표를 한눈에 확인
+- **시스템 상태**: 리소스 사용량 실시간 모니터링
+- **자동 새로고침**: 30초마다 데이터 자동 업데이트
+
+### **💾 데이터 저장 및 분석**
+- **SQLite 데이터베이스**: 성능 메트릭 영구 저장
+- **백그라운드 처리**: 비동기 메트릭 수집 및 저장
+- **히스토리 분석**: 시간대별, 세션별 성능 추이
+- **데이터 정리**: 30일 이상 된 오래된 데이터 자동 정리
+
+### **🔗 API 엔드포인트**
+```bash
+# 성능 대시보드 데이터
+GET /performance/dashboard
+
+# 세션별 성능 메트릭
+GET /performance/session/{session_id}
+
+# 웹 대시보드
+GET /performance_dashboard.html
+```
+
+### **📁 폴더 구조**
+```
+performance/
+├── README.md                    # 성능 모니터링 시스템 상세 가이드
+├── performance_monitor.py       # 핵심 모니터링 모듈
+├── performance_dashboard.html   # 웹 기반 대시보드
+└── performance_metrics.db       # SQLite 메트릭 데이터베이스
+```
+
+### **📱 웹 인터페이스**
+- **메인 UI**: 헤더에 성능 대시보드 링크 추가
+- **별도 페이지**: 전용 성능 모니터링 대시보드
+- **반응형 디자인**: 모바일 및 데스크톱 최적화
+- **실시간 업데이트**: 자동 새로고침 및 수동 새로고침
 
 ## 🔧 **EXAONE 모델 및 LoRA 지원**
 
