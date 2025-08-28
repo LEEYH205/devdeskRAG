@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevDesk-RAG v2.5.0 - 멀티모달 대시보드</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #4a5568;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 1.1em;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .card h3 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .status-item {
+            text-align: center;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 10px;
+            border-left: 4px solid #4299e1;
+        }
+
+        .status-item.success {
+            border-left-color: #48bb78;
+        }
+
+        .status-item.warning {
+            border-left-color: #ed8936;
+        }
+
+        .status-item.error {
+            border-left-color: #f56565;
+        }
+
+        .status-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2d3748;
+        }
+
+        .status-label {
+            color: #718096;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .upload-section {
+            background: #f7fafc;
+            border: 2px dashed #cbd5e0;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: border-color 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #4299e1;
+        }
+
+        .upload-section.dragover {
+            border-color: #4299e1;
+            background: #ebf8ff;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-btn {
+            background: #4299e1;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.3s ease;
+        }
+
+        .upload-btn:hover {
+            background: #3182ce;
+        }
+
+        .search-section {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        .search-btn {
+            background: #48bb78;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.3s ease;
+        }
+
+        .search-btn:hover {
+            background: #38a169;
+        }
+
+        .results-section {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .result-item {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #4299e1;
+        }
+
+        .result-item h4 {
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .result-meta {
+            color: #718096;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .result-content {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .chart-container {
+            height: 300px;
+            margin: 20px 0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .success {
+            background: #c6f6d5;
+            color: #2f855a;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .search-section {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖼️ 멀티모달 대시보드</h1>
+            <p>DevDesk-RAG v2.5.0 - 이미지 처리, OCR, 멀티모달 검색 모니터링</p>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- 시스템 상태 카드 -->
+            <div class="card">
+                <h3>🔧 시스템 상태</h3>
+                <div class="status-grid" id="systemStatus">
+                    <div class="loading">로딩 중...</div>
+                </div>
+            </div>
+
+            <!-- 처리 통계 카드 -->
+            <div class="card">
+                <h3>📊 처리 통계</h3>
+                <div class="chart-container">
+                    <canvas id="processingChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 콘텐츠 분포 카드 -->
+            <div class="card">
+                <h3>📁 콘텐츠 분포</h3>
+                <div class="chart-container">
+                    <canvas id="contentChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 검색 통계 카드 -->
+            <div class="card">
+                <h3>🔍 검색 통계</h3>
+                <div class="chart-container">
+                    <canvas id="searchChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 파일 업로드 섹션 -->
+        <div class="card">
+            <h3>📤 파일 업로드</h3>
+            <div class="upload-section" id="uploadSection">
+                <p>파일을 드래그 앤 드롭하거나 클릭하여 업로드하세요</p>
+                <p>지원 형식: JPG, PNG, PDF, TXT, MD</p>
+                <input type="file" id="fileInput" class="file-input" multiple
+                    accept=".jpg,.jpeg,.png,.bmp,.tiff,.gif,.pdf,.docx,.txt,.md">
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">파일 선택</button>
+            </div>
+            <div id="uploadResults"></div>
+        </div>
+
+        <!-- 멀티모달 검색 섹션 -->
+        <div class="card">
+            <h3>🔍 멀티모달 검색</h3>
+            <div class="search-section">
+                <input type="text" id="searchInput" class="search-input" placeholder="검색어를 입력하거나 이미지 파일 경로를 입력하세요...">
+                <select id="searchType" style="padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <option value="text_only">텍스트 검색</option>
+                    <option value="image_only">이미지 검색</option>
+                </select>
+                <button class="search-btn" onclick="performSearch()">검색</button>
+            </div>
+            <div class="results-section" id="searchResults">
+                <p style="text-align: center; color: #718096;">검색 결과가 여기에 표시됩니다</p>
+            </div>
+        </div>
+
+        <!-- 처리 히스토리 섹션 -->
+        <div class="card">
+            <h3>📋 처리 히스토리</h3>
+            <div id="processingHistory">
+                <div class="loading">로딩 중...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let processingChart, contentChart, searchChart;
+        let systemStatusInterval;
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function () {
+            initializeCharts();
+            loadSystemStatus();
+            loadProcessingHistory();
+
+            // 자동 새로고침 설정
+            systemStatusInterval = setInterval(loadSystemStatus, 10000);
+
+            // 파일 업로드 이벤트 설정
+            setupFileUpload();
+        });
+
+        // 차트 초기화
+        function initializeCharts() {
+            // 처리 통계 차트
+            const processingCtx = document.getElementById('processingChart').getContext('2d');
+            processingChart = new Chart(processingCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '처리 시간 (초)',
+                        data: [],
+                        borderColor: '#4299e1',
+                        backgroundColor: 'rgba(66, 153, 225, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // 콘텐츠 분포 차트
+            const contentCtx = document.getElementById('contentChart').getContext('2d');
+            contentChart = new Chart(contentCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['텍스트', '이미지', '문서'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#48bb78', '#4299e1', '#ed8936']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            // 검색 통계 차트
+            const searchCtx = document.getElementById('searchChart').getContext('2d');
+            searchChart = new Chart(searchCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['텍스트 검색', '이미지 검색', '멀티모달 검색'],
+                    datasets: [{
+                        label: '검색 횟수',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#48bb78', '#4299e1', '#ed8936']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // 시스템 상태 로드
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/multimodal/status');
+                const status = await response.json();
+
+                updateSystemStatus(status);
+                updateCharts(status);
+
+            } catch (error) {
+                console.error('시스템 상태 로드 실패:', error);
+                document.getElementById('systemStatus').innerHTML = '<div class="error">시스템 상태를 불러올 수 없습니다</div>';
+            }
+        }
+
+        // 시스템 상태 업데이트
+        function updateSystemStatus(status) {
+            const statusHtml = `
+                <div class="status-item ${status.ocr_system.available ? 'success' : 'error'}">
+                    <div class="status-value">${status.ocr_system.available ? '✓' : '✗'}</div>
+                    <div class="status-label">OCR 시스템</div>
+                </div>
+                <div class="status-item ${status.image_processor.available ? 'success' : 'error'}">
+                    <div class="status-value">${status.image_processor.available ? '✓' : '✗'}</div>
+                    <div class="status-label">이미지 처리</div>
+                </div>
+                <div class="status-item ${status.multimodal_search.available ? 'success' : 'error'}">
+                    <div class="status-value">${status.multimodal_search.available ? '✓' : '✗'}</div>
+                    <div class="status-label">멀티모달 검색</div>
+                </div>
+                <div class="status-item success">
+                    <div class="status-value">${status.processing_stats.total_processed}</div>
+                    <div class="status-label">총 처리 파일</div>
+                </div>
+                <div class="status-item success">
+                    <div class="status-value">${status.content_registry.total_content}</div>
+                    <div class="status-label">등록된 콘텐츠</div>
+                </div>
+            `;
+
+            document.getElementById('systemStatus').innerHTML = statusHtml;
+        }
+
+        // 차트 업데이트
+        function updateCharts(status) {
+            // 처리 통계 차트 (최근 10개 데이터)
+            const recentHistory = status.processing_stats.recent_history || [];
+            processingChart.data.labels = recentHistory.map(h => h.content_id.substring(0, 8));
+            processingChart.data.datasets[0].data = recentHistory.map(h => h.processing_time);
+            processingChart.update();
+
+            // 콘텐츠 분포 차트
+            const contentStats = status.content_registry.content_types || [];
+            const textCount = contentStats.filter(t => t === 'text').length;
+            const imageCount = contentStats.filter(t => t === 'image').length;
+            const documentCount = contentStats.filter(t => t === 'document').length;
+
+            contentChart.data.datasets[0].data = [textCount, imageCount, documentCount];
+            contentChart.update();
+        }
+
+        // 파일 업로드 설정
+        function setupFileUpload() {
+            const uploadSection = document.getElementById('uploadSection');
+            const fileInput = document.getElementById('fileInput');
+
+            // 드래그 앤 드롭 이벤트
+            uploadSection.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadSection.classList.add('dragover');
+            });
+
+            uploadSection.addEventListener('dragleave', () => {
+                uploadSection.classList.remove('dragover');
+            });
+
+            uploadSection.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadSection.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                handleFiles(files);
+            });
+
+            // 파일 선택 이벤트
+            fileInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                handleFiles(files);
+            });
+        }
+
+        // 파일 처리
+        async function handleFiles(files) {
+            const results = [];
+
+            for (const file of files) {
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch('/multimodal/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+                    results.push(result);
+
+                } catch (error) {
+                    results.push({
+                        success: false,
+                        filename: file.name,
+                        error: error.message
+                    });
+                }
+            }
+
+            displayUploadResults(results);
+            loadSystemStatus(); // 상태 새로고침
+        }
+
+        // 업로드 결과 표시
+        function displayUploadResults(results) {
+            const container = document.getElementById('uploadResults');
+
+            const resultsHtml = results.map(result => {
+                if (result.success) {
+                    return `
+                        <div class="success">
+                            <strong>${result.filename || result.content_id}</strong> 업로드 성공
+                            <br>처리 시간: ${result.processing_time?.toFixed(2) || 'N/A'}초
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div class="error">
+                            <strong>${result.filename || 'Unknown'}</strong> 업로드 실패
+                            <br>오류: ${result.error || result.error_message || 'Unknown error'}
+                        </div>
+                    `;
+                }
+            }).join('');
+
+            container.innerHTML = resultsHtml;
+        }
+
+        // 검색 실행
+        async function performSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            const searchType = document.getElementById('searchType').value;
+
+            if (!query) {
+                alert('검색어를 입력해주세요');
+                return;
+            }
+
+            try {
+                const response = await fetch('/multimodal/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        query_type: searchType,
+                        top_k: 10
+                    })
+                });
+
+                const results = await response.json();
+                displaySearchResults(results);
+
+            } catch (error) {
+                console.error('검색 실패:', error);
+                document.getElementById('searchResults').innerHTML = '<div class="error">검색을 실행할 수 없습니다</div>';
+            }
+        }
+
+        // 검색 결과 표시
+        function displaySearchResults(results) {
+            const container = document.getElementById('searchResults');
+
+            if (!results || results.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #718096;">검색 결과가 없습니다</p>';
+                return;
+            }
+
+            const resultsHtml = results.map(result => `
+                <div class="result-item">
+                    <h4>${result.content_id}</h4>
+                    <div class="result-meta">
+                        타입: ${result.content_type} | 
+                        유사도: ${(result.similarity_score * 100).toFixed(1)}%
+                    </div>
+                    ${result.text_content ? `<div class="result-content">${result.text_content.substring(0, 200)}...</div>` : ''}
+                    ${result.image_path ? `<div class="result-content">이미지: ${result.image_path}</div>` : ''}
+                </div>
+            `).join('');
+
+            container.innerHTML = resultsHtml;
+        }
+
+        // 처리 히스토리 로드
+        async function loadProcessingHistory() {
+            try {
+                const response = await fetch('/multimodal/history');
+                const history = await response.json();
+
+                displayProcessingHistory(history);
+
+            } catch (error) {
+                console.error('처리 히스토리 로드 실패:', error);
+                document.getElementById('processingHistory').innerHTML = '<div class="error">처리 히스토리를 불러올 수 없습니다</div>';
+            }
+        }
+
+        // 처리 히스토리 표시
+        function displayProcessingHistory(history) {
+            const container = document.getElementById('processingHistory');
+
+            if (!history || history.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #718096;">처리 히스토리가 없습니다</p>';
+                return;
+            }
+
+            const historyHtml = history.slice(0, 10).map(item => `
+                <div class="result-item">
+                    <h4>${item.content_id}</h4>
+                    <div class="result-meta">
+                        타입: ${item.content_type} | 
+                        처리 시간: ${item.processing_time?.toFixed(2) || 'N/A'}초 |
+                        성공: ${item.success ? '✓' : '✗'}
+                    </div>
+                    ${item.error_message ? `<div class="result-content error">오류: ${item.error_message}</div>` : ''}
+                </div>
+            `).join('');
+
+            container.innerHTML = historyHtml;
+        }
+
+        // 페이지 언로드 시 정리
+        window.addEventListener('beforeunload', () => {
+            if (systemStatusInterval) {
+                clearInterval(systemStatusInterval);
+            }
+        });
+    </script>
+</body>
+
+</html>

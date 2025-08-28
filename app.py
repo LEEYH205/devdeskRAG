@@ -45,6 +45,16 @@ from advanced_search.dora_system import get_dora_system
 from advanced_search.dola_system import get_dola_system
 from advanced_search.integrated_lora_manager import get_integrated_lora_manager
 
+# 멀티모달 시스템 모듈 import
+MULTIMODAL_AVAILABLE = False
+try:
+    from multimodal import MultimodalManager, MultimodalConfig
+    MULTIMODAL_AVAILABLE = True
+    print("멀티모달 시스템 임포트 성공!")
+except ImportError as e:
+    print(f"멀티모달 시스템을 임포트할 수 없습니다: {e}")
+    print("일부 기능이 제한됩니다.")
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -75,6 +85,7 @@ retriever = None
 llm = None
 chat_manager = None
 doc_processor = None
+multimodal_manager = None
 
 # 지원하는 파일 확장자
 SUPPORTED_EXTENSIONS = {
@@ -89,7 +100,7 @@ SUPPORTED_EXTENSIONS = {
 
 def initialize_components():
     """컴포넌트들을 초기화합니다"""
-    global embed, vs, retriever, llm, chat_manager, doc_processor
+    global embed, vs, retriever, llm, chat_manager, doc_processor, multimodal_manager
     
     try:
         # 임베딩 모델 초기화
@@ -184,6 +195,24 @@ def initialize_components():
         except Exception as e:
             logger.warning(f"Advanced search engine initialization failed: {e}")
             logger.info("Continuing with basic search functionality")
+        
+        # 멀티모달 시스템 초기화
+        if MULTIMODAL_AVAILABLE:
+            logger.info("Initializing multimodal system...")
+            try:
+                multimodal_config = MultimodalConfig(
+                    enable_ocr=True,   # Phase 2: OCR 시스템 활성화
+                    enable_clip=True,   # Phase 3: CLIP 시스템 활성화
+                    enable_image_enhancement=True
+                )
+                multimodal_manager = MultimodalManager(multimodal_config)
+                logger.info("Multimodal system initialized successfully")
+            except Exception as e:
+                logger.warning(f"Multimodal system initialization failed: {e}")
+                multimodal_manager = None
+        else:
+            logger.info("Multimodal system not available")
+            multimodal_manager = None
         
         logger.info("All components initialized successfully")
         return True
@@ -1828,6 +1857,129 @@ def clear_all_lora_adapters():
 def get_lora_dashboard():
     """LoRA 관리 대시보드를 제공합니다"""
     return FileResponse("advanced_search/lora_management_dashboard.html")
+
+# ============================================================================
+# ============================================================================
+# 멀티모달 시스템 API 엔드포인트
+# ============================================================================
+
+@app.get("/multimodal/status")
+def get_multimodal_status():
+    """멀티모달 시스템 상태 정보를 반환합니다"""
+    try:
+        if not MULTIMODAL_AVAILABLE or not multimodal_manager:
+            raise HTTPException(status_code=503, detail="멀티모달 시스템을 사용할 수 없습니다")
+        
+        status = multimodal_manager.get_system_status()
+        return status
+        
+    except Exception as e:
+        logger.error(f"멀티모달 시스템 상태 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"시스템 상태 조회 실패: {str(e)}")
+
+@app.post("/multimodal/upload")
+async def upload_multimodal_file(file: UploadFile = File(...)):
+    """멀티모달 파일 업로드 및 처리"""
+    try:
+        logger.info(f"멀티모달 파일 업로드 요청: {file.filename}")
+        
+        if not MULTIMODAL_AVAILABLE or not multimodal_manager:
+            logger.error("멀티모달 시스템을 사용할 수 없습니다")
+            raise HTTPException(status_code=503, detail="멀티모달 시스템을 사용할 수 없습니다")
+        
+        # 임시 파일로 저장
+        temp_file_path = f"/tmp/{file.filename}"
+        logger.info(f"임시 파일 저장: {temp_file_path}")
+        
+        with open(temp_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        logger.info("파일 저장 완료, 멀티모달 시스템으로 처리 시작")
+        
+        # 멀티모달 시스템으로 처리
+        result = multimodal_manager.process_file(temp_file_path)
+        logger.info(f"파일 처리 결과: {result}")
+        
+        # 임시 파일 삭제
+        os.remove(temp_file_path)
+        logger.info("임시 파일 삭제 완료")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"멀티모달 파일 업로드 실패: {e}")
+        logger.error(f"오류 타입: {type(e)}")
+        logger.error(f"오류 상세: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"파일 처리 실패: {str(e)}")
+
+@app.post("/multimodal/search")
+def perform_multimodal_search(request: dict):
+    """멀티모달 검색을 실행합니다"""
+    try:
+        logger.info(f"멀티모달 검색 요청 수신: {request}")
+        
+        if not MULTIMODAL_AVAILABLE or not multimodal_manager:
+            logger.error("멀티모달 시스템을 사용할 수 없습니다")
+            raise HTTPException(status_code=503, detail="멀티모달 시스템을 사용할 수 없습니다")
+        
+        query = request.get("query", "")
+        query_type = request.get("query_type", "text_only")
+        top_k = request.get("top_k", 10)
+        
+        logger.info(f"검색 파라미터: query={query}, type={query_type}, top_k={top_k}")
+        
+        if not query:
+            raise HTTPException(status_code=400, detail="검색어를 입력해주세요")
+        
+        logger.info("멀티모달 매니저 검색 메서드 호출 시작")
+        results = multimodal_manager.search(query, query_type, top_k)
+        logger.info(f"검색 결과: {results}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"멀티모달 검색 실패: {e}")
+        logger.error(f"오류 타입: {type(e)}")
+        logger.error(f"오류 상세: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+
+@app.get("/multimodal/history")
+def get_multimodal_history():
+    """멀티모달 처리 히스토리를 반환합니다"""
+    try:
+        if not MULTIMODAL_AVAILABLE or not multimodal_manager:
+            raise HTTPException(status_code=503, detail="멀티모달 시스템을 사용할 수 없습니다")
+        
+        history = multimodal_manager.processing_history
+        return history
+        
+    except Exception as e:
+        logger.error(f"멀티모달 히스토리 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"히스토리 조회 실패: {str(e)}")
+
+@app.post("/multimodal/clear-cache")
+def clear_multimodal_cache():
+    """멀티모달 시스템 캐시를 초기화합니다"""
+    try:
+        if not MULTIMODAL_AVAILABLE or not multimodal_manager:
+            raise HTTPException(status_code=503, detail="멀티모달 시스템을 사용할 수 없습니다")
+        
+        multimodal_manager.clear_cache()
+        
+        return {
+            "status": "success",
+            "message": "멀티모달 캐시 초기화 완료",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"멀티모달 캐시 초기화 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"캐시 초기화 실패: {str(e)}")
+
+@app.get("/multimodal/dashboard")
+def get_multimodal_dashboard():
+    """멀티모달 대시보드를 제공합니다"""
+    return FileResponse("multimodal/multimodal_dashboard.html")
 
 if __name__ == "__main__":
     import uvicorn
