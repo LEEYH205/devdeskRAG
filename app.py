@@ -33,6 +33,12 @@ from performance.performance_monitor import record_chat_metrics, get_performance
 
 # 고급 검색 알고리즘 모듈 import
 from advanced_search.advanced_search import advanced_search_engine, get_search_insights
+from advanced_search.personalized_search import (
+    behavior_tracker, 
+    personalized_search_engine, 
+    real_time_learning_system,
+    UserBehavior
+)
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -846,6 +852,237 @@ async def get_advanced_search_dashboard():
 async def get_advanced_analysis_dashboard():
     """Phase 2.2 고급 분석 대시보드 페이지를 제공합니다"""
     return FileResponse("advanced_search/advanced_analysis_dashboard.html")
+
+@app.get("/personalization_dashboard")
+def get_personalization_dashboard():
+    """개인화 검색 대시보드를 제공합니다"""
+    return FileResponse("advanced_search/personalization_dashboard.html")
+
+# ===== 개인화 검색 API 엔드포인트 =====
+
+@app.get("/personalization/profiles")
+def get_user_profiles():
+    """사용자 프로필 목록을 조회합니다"""
+    try:
+        # 데이터베이스에서 사용자 프로필 조회
+        import sqlite3
+        from datetime import datetime
+        
+        profiles = []
+        with sqlite3.connect("personalization.db") as conn:
+            cursor = conn.execute("SELECT * FROM user_profiles")
+            for row in cursor.fetchall():
+                profile = {
+                    'user_id': row[0],
+                    'created_at': row[1],
+                    'last_active': row[2],
+                    'search_count': row[3],
+                    'total_clicks': row[4],
+                    'avg_session_time': row[5] or 0.0,
+                    'preferred_topics': json.loads(row[6]) if row[6] else [],
+                    'search_patterns': json.loads(row[7]) if row[7] else {}
+                }
+                profiles.append(profile)
+        
+        return profiles
+    except Exception as e:
+        logger.error(f"사용자 프로필 조회 실패: {e}")
+        return []
+
+@app.get("/personalization/sessions")
+def get_search_sessions():
+    """검색 세션 목록을 조회합니다"""
+    try:
+        # 데이터베리스에서 검색 세션 조회
+        import sqlite3
+        
+        sessions = []
+        with sqlite3.connect("personalization.db") as conn:
+            cursor = conn.execute("SELECT * FROM search_sessions ORDER BY start_time DESC LIMIT 50")
+            for row in cursor.fetchall():
+                session = {
+                    'session_id': row[0],
+                    'user_id': row[1],
+                    'start_time': row[2],
+                    'end_time': row[3],
+                    'queries': json.loads(row[4]) if row[4] else [],
+                    'clicked_results': json.loads(row[5]) if row[5] else [],
+                    'session_duration': row[6] or 0.0
+                }
+                sessions.append(session)
+        
+        return sessions
+    except Exception as e:
+        logger.error(f"검색 세션 조회 실패: {e}")
+        return []
+
+@app.get("/personalization/behaviors")
+def get_user_behaviors():
+    """사용자 행동 데이터를 조회합니다"""
+    try:
+        # 데이터베이스에서 사용자 행동 조회
+        import sqlite3
+        
+        behaviors = []
+        with sqlite3.connect("personalization.db") as conn:
+            cursor = conn.execute("SELECT * FROM user_behaviors ORDER BY timestamp DESC LIMIT 100")
+            for row in cursor.fetchall():
+                behavior = {
+                    'id': row[0],
+                    'user_id': row[1],
+                    'session_id': row[2],
+                    'behavior_type': row[3],
+                    'query': row[4],
+                    'document_id': row[5],
+                    'timestamp': row[6],
+                    'metadata': json.loads(row[7]) if row[7] else {}
+                }
+                behaviors.append(behavior)
+        
+        return behaviors
+    except Exception as e:
+        logger.error(f"사용자 행동 조회 실패: {e}")
+        return []
+
+@app.get("/personalization/stats")
+def get_personalization_stats():
+    """개인화 검색 통계를 제공합니다"""
+    try:
+        # 데이터베이스에서 통계 계산
+        import sqlite3
+        
+        with sqlite3.connect("personalization.db") as conn:
+            # 총 사용자 수
+            cursor = conn.execute("SELECT COUNT(*) FROM user_profiles")
+            total_users = cursor.fetchone()[0]
+            
+            # 활성 사용자 수 (24시간 내 활동)
+            from datetime import datetime, timedelta
+            active_time = (datetime.now() - timedelta(hours=24)).isoformat()
+            cursor = conn.execute("SELECT COUNT(*) FROM user_profiles WHERE last_active > ?", (active_time,))
+            active_users = cursor.fetchone()[0]
+            
+            # 총 검색 수
+            cursor = conn.execute("SELECT COUNT(*) FROM user_behaviors WHERE behavior_type = 'search'")
+            total_searches = cursor.fetchone()[0]
+            
+            # 총 클릭 수
+            cursor = conn.execute("SELECT COUNT(*) FROM user_behaviors WHERE behavior_type = 'click'")
+            total_clicks = cursor.fetchone()[0]
+        
+        return {
+            'total_users': total_users,
+            'active_users': active_users,
+            'total_searches': total_searches,
+            'total_clicks': total_clicks,
+            'timestamp': time.time()
+        }
+    except Exception as e:
+        logger.error(f"개인화 통계 조회 실패: {e}")
+        return {
+            'total_users': 0,
+            'active_users': 0,
+            'total_searches': 0,
+            'total_clicks': 0,
+            'timestamp': time.time()
+        }
+
+@app.post("/personalization/search")
+async def personalized_search(request: dict):
+    """개인화된 검색을 실행합니다"""
+    try:
+        user_id = request.get("user_id", "anonymous")
+        query = request.get("query", "")
+        
+        if not query:
+            raise HTTPException(status_code=400, detail="검색 쿼리가 필요합니다")
+        
+        # 기존 검색 결과 가져오기 (간단한 구현)
+        test_results = [
+            {'id': 'doc1', 'score': 0.8, 'metadata': {'topics': ['performance', 'optimization']}},
+            {'id': 'doc2', 'score': 0.7, 'metadata': {'topics': ['search', 'algorithm']}},
+            {'id': 'doc3', 'score': 0.9, 'metadata': {'topics': ['rag', 'system']}}
+        ]
+        
+        # 개인화 검색 실행
+        personalized_results = personalized_search_engine.personalize_search_results(
+            user_id, query, test_results
+        )
+        
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "query": query,
+            "results": [r.to_dict() for r in personalized_results],
+            "count": len(personalized_results),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"개인화 검색 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"개인화 검색 실패: {str(e)}")
+
+@app.post("/personalization/feedback")
+async def submit_user_feedback(request: dict):
+    """사용자 피드백을 제출합니다"""
+    try:
+        user_id = request.get("user_id", "anonymous")
+        query = request.get("query", "")
+        document_id = request.get("document_id", "")
+        feedback_score = request.get("feedback_score", 0.5)
+        
+        if not all([user_id, query, document_id]):
+            raise HTTPException(status_code=400, detail="모든 필드가 필요합니다")
+        
+        # 실시간 학습 시스템에 피드백 전달
+        real_time_learning_system.learn_from_feedback(
+            user_id, query, document_id, feedback_score
+        )
+        
+        return {
+            "status": "success",
+            "message": "피드백이 성공적으로 제출되었습니다",
+            "user_id": user_id,
+            "document_id": document_id,
+            "feedback_score": feedback_score,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"피드백 제출 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"피드백 제출 실패: {str(e)}")
+
+@app.post("/personalization/track")
+async def track_user_behavior(request: dict):
+    """사용자 행동을 추적합니다"""
+    try:
+        user_id = request.get("user_id", "anonymous")
+        behavior_type = request.get("behavior_type", "search")
+        query = request.get("query", "")
+        document_id = request.get("document_id", "")
+        metadata = request.get("metadata", {})
+        
+        if not user_id:
+            raise HTTPException(status_code=400, detail="사용자 ID가 필요합니다")
+        
+        # 행동 추적
+        behavior_tracker.track_behavior(
+            user_id, 
+            behavior_tracker._get_session_id(user_id), 
+            UserBehavior(behavior_type), 
+            query, 
+            document_id, 
+            metadata
+        )
+        
+        return {
+            "status": "success",
+            "message": "사용자 행동이 성공적으로 추적되었습니다",
+            "user_id": user_id,
+            "behavior_type": behavior_type,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"행동 추적 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"행동 추적 실패: {str(e)}")
 
 @app.get("/")
 def root():
