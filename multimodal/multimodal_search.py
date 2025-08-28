@@ -178,23 +178,29 @@ class MultimodalSearch:
         """멀티모달 검색 실행 - 실제 검색 로직 복원"""
         try:
             logger.info(f"검색 요청: {query.query_type}, 쿼리: {query.text}")
+            logger.info(f"MultimodalQuery 객체: {query}")
+            logger.info(f"query.text 타입: {type(query.text)}, 값: '{query.text}'")
+            logger.info(f"query.query_type 타입: {type(query.query_type)}, 값: '{query.query_type}'")
             
             results = []
             
             # 쿼리 타입에 따른 검색 실행
             if query.query_type == "text_only":
                 if query.text:
+                    logger.info("텍스트 전용 검색 실행")
                     results = self._text_search(query.text, top_k)
                 else:
                     logger.warning("텍스트 쿼리가 비어있습니다")
                     
             elif query.query_type == "image_only":
                 if query.image_features:
+                    logger.info("이미지 전용 검색 실행")
                     results = self._image_search(query.image_features, top_k)
                 else:
                     logger.warning("이미지 특징이 제공되지 않았습니다")
                     
             elif query.query_type == "multimodal":
+                logger.info("멀티모달 통합 검색 실행")
                 # 멀티모달 통합 검색
                 results = self._multimodal_search(query, top_k)
                 
@@ -217,7 +223,7 @@ class MultimodalSearch:
             return []
     
     def _text_search(self, query_text: str, top_k: int) -> List[MultimodalResult]:
-        """텍스트 기반 검색 - 단순화된 버전"""
+        """텍스트 기반 검색"""
         if not query_text:
             return []
         
@@ -227,6 +233,10 @@ class MultimodalSearch:
         
         results = []
         query_lower = query_text.lower()
+        
+        # 공백을 구분하여 개별 키워드 추출
+        keywords = [kw.strip() for kw in query_lower.split() if kw.strip()]
+        logger.info(f"추출된 키워드: {keywords}")
         
         try:
             for content_id, content_data in self.text_index.items():
@@ -240,12 +250,23 @@ class MultimodalSearch:
                 text_lower = content_data["text"].lower()
                 logger.info(f"텍스트 내용 (소문자): {text_lower}")
                 
-                # 간단한 키워드 매칭
-                if query_lower in text_lower:
-                    logger.info(f"키워드 매칭 성공: '{query_lower}' in '{text_lower}'")
+                # 개별 키워드 매칭 및 점수 계산
+                matched_keywords = 0
+                total_keywords = len(keywords)
+                
+                for keyword in keywords:
+                    if keyword in text_lower:
+                        matched_keywords += 1
+                        logger.info(f"키워드 매칭 성공: '{keyword}' in '{text_lower}'")
+                    else:
+                        logger.info(f"키워드 매칭 실패: '{keyword}' not in '{text_lower}'")
+                
+                # 매칭 점수 계산 (0.0 ~ 1.0)
+                if matched_keywords > 0:
+                    match_ratio = matched_keywords / total_keywords
+                    similarity = 0.5 + (match_ratio * 0.5)  # 0.5 ~ 1.0 범위
                     
-                    # 간단한 유사도 점수 계산 (0.0 ~ 1.0)
-                    similarity = 0.8  # 임시로 고정값 사용
+                    logger.info(f"키워드 매칭 결과: {matched_keywords}/{total_keywords}, 유사도: {similarity:.3f}")
                     
                     try:
                         result = MultimodalResult(
@@ -261,8 +282,8 @@ class MultimodalSearch:
                         logger.error(f"MultimodalResult 생성 실패: {e}")
                         continue
                 else:
-                    logger.info(f"키워드 매칭 실패: '{query_lower}' not in '{text_lower}'")
-                    
+                    logger.info("키워드 매칭 없음")
+                        
         except Exception as e:
             logger.error(f"텍스트 검색 중 오류 발생: {e}")
             logger.error(f"오류 타입: {type(e)}")
@@ -299,14 +320,30 @@ class MultimodalSearch:
         return results
     
     def _multimodal_search(self, query: MultimodalQuery, top_k: int) -> List[MultimodalResult]:
-        """멀티모달 통합 검색"""
+        """멀티모달 통합 검색 - 하이브리드 검색 구현"""
+        logger.info(f"멀티모달 통합 검색 시작: top_k={top_k}")
+        
         results = []
         
-        # 텍스트 검색 결과
-        text_results = self._text_search(query.text, top_k * 2) if query.text else []
+        # 텍스트 검색 결과 (가중치: 0.6)
+        text_results = []
+        if query.text:
+            logger.info(f"텍스트 검색 실행: '{query.text}'")
+            text_results = self._text_search(query.text, top_k * 2)
+            # 텍스트 결과에 가중치 적용
+            for result in text_results:
+                result.similarity_score *= 0.6
+            logger.info(f"텍스트 검색 결과: {len(text_results)}개")
         
-        # 이미지 검색 결과
-        image_results = self._image_search(query.image_features, top_k * 2) if query.image_features else []
+        # 이미지 검색 결과 (가중치: 0.4)
+        image_results = []
+        if query.image_features:
+            logger.info("이미지 특징 검색 실행")
+            image_results = self._image_search(query.image_features, top_k * 2)
+            # 이미지 결과에 가중치 적용
+            for result in image_results:
+                result.similarity_score *= 0.4
+            logger.info(f"이미지 검색 결과: {len(image_results)}개")
         
         # 결과 통합 및 가중치 적용
         all_results = {}
@@ -317,7 +354,7 @@ class MultimodalSearch:
             if content_id not in all_results:
                 all_results[content_id] = result
             else:
-                # 기존 결과와 통합
+                # 기존 결과와 통합 (가중치 합산)
                 all_results[content_id].similarity_score = max(
                     all_results[content_id].similarity_score,
                     result.similarity_score
@@ -329,7 +366,7 @@ class MultimodalSearch:
             if content_id not in all_results:
                 all_results[content_id] = result
             else:
-                # 기존 결과와 통합
+                # 기존 결과와 통합 (가중치 합산)
                 all_results[content_id].similarity_score = max(
                     all_results[content_id].similarity_score,
                     result.similarity_score
@@ -339,6 +376,7 @@ class MultimodalSearch:
         results = list(all_results.values())
         results.sort(key=lambda x: x.similarity_score, reverse=True)
         
+        logger.info(f"멀티모달 통합 검색 완료: {len(results)}개 결과")
         return results[:top_k]
     
     def _calculate_text_similarity(self, query: str, text: str) -> float:

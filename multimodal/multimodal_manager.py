@@ -353,23 +353,55 @@ class MultimodalManager:
             if query_type == "text_only":
                 multimodal_query = MultimodalQuery(text=query, query_type="text_only")
             elif query_type == "image_only":
-                # 이미지 경로로부터 특징 추출
-                if os.path.exists(query):
-                    image = self.image_processor.load_image(query)
-                    if image:
-                        image_features = self.image_processor.extract_clip_features(image)
-                        multimodal_query = MultimodalQuery(
-                            image_path=query,
-                            image_features=image_features,
-                            query_type="image_only"
-                        )
+                # content_id로 이미지 검색 (파일 경로가 아닌)
+                if query in self.content_registry:
+                    # content_id가 존재하면 해당 이미지의 특징 사용
+                    content_info = self.content_registry[query]
+                    if content_info.get("content_type") == "image":
+                        # 이미지 인덱스에서 특징 추출
+                        if self.multimodal_search and hasattr(self.multimodal_search, 'image_index'):
+                            if query in self.multimodal_search.image_index:
+                                image_features = self.multimodal_search.image_index[query].get("image_features")
+                                if image_features:
+                                    multimodal_query = MultimodalQuery(
+                                        image_path=query,
+                                        image_features=image_features,
+                                        query_type="image_only"
+                                    )
+                                else:
+                                    raise ValueError("이미지 특징을 찾을 수 없습니다")
+                            else:
+                                raise ValueError("이미지 인덱스에서 해당 content_id를 찾을 수 없습니다")
+                        else:
+                            raise ValueError("멀티모달 검색 시스템이 초기화되지 않았습니다")
                     else:
-                        raise ValueError("이미지를 로드할 수 없습니다")
+                        raise ValueError("해당 content_id는 이미지가 아닙니다")
                 else:
-                    raise ValueError("이미지 파일이 존재하지 않습니다")
+                    # content_id가 존재하지 않으면 파일 경로로 시도 (기존 로직)
+                    if os.path.exists(query):
+                        image = self.image_processor.load_image(query)
+                        if image:
+                            image_features = self.image_processor.extract_clip_features(image)
+                            multimodal_query = MultimodalQuery(
+                                image_path=query,
+                                image_features=image_features,
+                                query_type="image_only"
+                            )
+                        else:
+                            raise ValueError("이미지를 로드할 수 없습니다")
+                    else:
+                        raise ValueError("content_id 또는 이미지 파일이 존재하지 않습니다")
             elif query_type == "multimodal":
                 # 멀티모달 쿼리 (텍스트 + 이미지 특징)
-                multimodal_query = MultimodalQuery(text=query, query_type="multimodal")
+                # 텍스트가 비어있지 않은지 확인
+                if not query or not query.strip():
+                    raise ValueError("멀티모달 검색을 위해서는 검색어가 필요합니다")
+                
+                multimodal_query = MultimodalQuery(
+                    text=query.strip(),  # 명시적으로 text 필드 설정
+                    query_type="multimodal"
+                )
+                logger.info(f"멀티모달 쿼리 생성: text='{multimodal_query.text}', type='{multimodal_query.query_type}'")
             else:
                 raise ValueError(f"지원하지 않는 쿼리 타입: {query_type}")
             
