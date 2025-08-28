@@ -40,6 +40,11 @@ from advanced_search.personalized_search import (
     UserBehavior
 )
 
+# LoRA 시스템 모듈 import
+from advanced_search.dora_system import get_dora_system
+from advanced_search.dola_system import get_dola_system
+from advanced_search.integrated_lora_manager import get_integrated_lora_manager
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -388,7 +393,7 @@ class FileUploadResponse(BaseModel):
 app = FastAPI(
     title="DevDesk-RAG",
     description="나만의 ChatGPT - RAG 기반 문서 Q&A 시스템",
-    version="2.2.0"
+    version="2.3.0"
 )
 
 # CORS 설정
@@ -417,7 +422,7 @@ async def get_performance_dashboard_alt():
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
-    logger.info("Starting DevDesk-RAG API v2.2.0...")
+    logger.info("Starting DevDesk-RAG API v2.3.0...")
     if not initialize_components():
         logger.error("Failed to initialize components. Check your configuration.")
         raise RuntimeError("Component initialization failed")
@@ -1087,7 +1092,7 @@ async def track_user_behavior(request: dict):
 @app.get("/")
 def root():
     return {
-        "message": "DevDesk-RAG API v2.2.0", 
+        "message": "DevDesk-RAG API v2.3.0", 
         "endpoints": ["/chat", "/chat/stream", "/upload", "/files", "/sessions", "/health", "/ui", "/config"],
         "features": ["Performance Monitoring", "Optimized RAG", "CORS Support", "Web UI", "Chat History", "Streaming Response", "File Upload"],
         "web_ui": "/ui"
@@ -1597,6 +1602,232 @@ def get_search_quality_metrics(query: str = None, algorithm: str = None, limit: 
     except Exception as e:
         logger.error(f"검색 품질 메트릭 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=f"검색 품질 메트릭 조회 실패: {str(e)}")
+
+# ============================================================================
+# LoRA 시스템 API 엔드포인트
+# ============================================================================
+
+@app.get("/lora/system/status")
+def get_lora_system_status():
+    """LoRA 시스템 상태를 반환합니다"""
+    try:
+        dora_system = get_dora_system()
+        dola_system = get_dola_system()
+        integrated_manager = get_integrated_lora_manager()
+        
+        return {
+            "status": "success",
+            "dora_system": dora_system.get_system_status(),
+            "dola_system": dola_system.get_system_status(),
+            "adapter_registry": {
+                "total_adapters": len(integrated_manager.adapter_registry.adapters),
+                "dora_adapters": len(integrated_manager.adapter_registry.list_adapters("dora")),
+                "dola_adapters": len(integrated_manager.adapter_registry.list_adapters("dola"))
+            },
+            "usage_statistics": {
+                "total_requests": integrated_manager.request_count,
+                "total_adaptations": integrated_manager.adaptation_count,
+                "adaptation_rate": integrated_manager.adaptation_count / max(integrated_manager.request_count, 1)
+            },
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"LoRA 시스템 상태 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"LoRA 시스템 상태 조회 실패: {str(e)}")
+
+@app.get("/lora/adapters/list")
+def get_lora_adapters_list():
+    """등록된 모든 LoRA 어댑터 목록을 반환합니다"""
+    try:
+        integrated_manager = get_integrated_lora_manager()
+        adapters = []
+        
+        for adapter_id, adapter in integrated_manager.adapter_registry.adapters.items():
+            profile = integrated_manager.adapter_registry.adapter_profiles.get(adapter_id)
+            if profile:
+                adapters.append({
+                    "adapter_id": profile.adapter_id,
+                    "adapter_type": profile.adapter_type,
+                    "task_type": profile.task_type,
+                    "domain_type": profile.domain_type,
+                    "weight_shape": profile.weight_shape,
+                    "usage_count": profile.usage_count,
+                    "created_at": profile.created_at.isoformat() if profile.created_at else None,
+                    "last_used": profile.last_used.isoformat() if profile.last_used else None
+                })
+        
+        return {
+            "status": "success",
+            "total_adapters": len(adapters),
+            "adapters": adapters,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"LoRA 어댑터 목록 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"LoRA 어댑터 목록 조회 실패: {str(e)}")
+
+@app.post("/lora/create-specialized-model")
+def create_lora_specialized_model(request: dict):
+    """사용자별, 태스크별 특화 모델을 생성합니다"""
+    try:
+        user_id = request.get("user_id")
+        task_type = request.get("task_type")
+        domain_type = request.get("domain_type")
+        weight_shape = request.get("weight_shape", (100, 200))
+        
+        if not user_id or not task_type:
+            raise HTTPException(status_code=400, detail="사용자 ID와 태스크 유형은 필수입니다")
+        
+        integrated_manager = get_integrated_lora_manager()
+        adapter_id = integrated_manager.create_specialized_model(
+            user_id=user_id,
+            task_type=task_type,
+            domain_type=domain_type,
+            weight_shape=tuple(weight_shape)
+        )
+        
+        return {
+            "status": "success",
+            "message": "특화 모델 생성 완료",
+            "adapter_id": adapter_id,
+            "user_id": user_id,
+            "task_type": task_type,
+            "domain_type": domain_type,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"특화 모델 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"특화 모델 생성 실패: {str(e)}")
+
+@app.post("/lora/get-optimized-adapter")
+def get_lora_optimized_adapter(request: dict):
+    """사용자와 태스크에 최적화된 어댑터를 가져옵니다"""
+    try:
+        user_id = request.get("user_id")
+        task_type = request.get("task_type")
+        domain_context = request.get("domain_context", {})
+        
+        if not user_id or not task_type:
+            raise HTTPException(status_code=400, detail="사용자 ID와 태스크 유형은 필수입니다")
+        
+        integrated_manager = get_integrated_lora_manager()
+        adapter = integrated_manager.get_optimized_adapter(
+            user_id=user_id,
+            task_type=task_type,
+            domain_context=domain_context
+        )
+        
+        # 어댑터 정보 추출
+        adapter_info = {
+            "adapter_id": str(adapter),
+            "type": "integrated_lora",
+            "user_id": user_id,
+            "task_type": task_type
+        }
+        
+        return {
+            "status": "success",
+            "message": "최적화된 어댑터 가져오기 완료",
+            "adapter": adapter_info,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"최적화된 어댑터 가져오기 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"최적화된 어댑터 가져오기 실패: {str(e)}")
+
+@app.post("/lora/export-adapters")
+def export_lora_adapters(request: dict):
+    """등록된 모든 어댑터를 파일로 내보냅니다"""
+    try:
+        export_path = request.get("export_path", "./exports/lora_adapters")
+        
+        integrated_manager = get_integrated_lora_manager()
+        integrated_manager.export_adapters(export_path)
+        
+        return {
+            "status": "success",
+            "message": "어댑터 내보내기 완료",
+            "export_path": export_path,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"어댑터 내보내기 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"어댑터 내보내기 실패: {str(e)}")
+
+@app.post("/lora/export-adapter/{adapter_id}")
+def export_specific_lora_adapter(adapter_id: str):
+    """특정 어댑터를 파일로 내보냅니다"""
+    try:
+        integrated_manager = get_integrated_lora_manager()
+        export_path = f"./exports/lora_adapters/{adapter_id}"
+        
+        # 특정 어댑터만 내보내기
+        integrated_manager.adapter_registry.save_adapter(adapter_id, f"{export_path}.pth")
+        
+        return {
+            "status": "success",
+            "message": "어댑터 내보내기 완료",
+            "adapter_id": adapter_id,
+            "export_path": export_path,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"어댑터 내보내기 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"어댑터 내보내기 실패: {str(e)}")
+
+@app.delete("/lora/delete-adapter/{adapter_id}")
+def delete_lora_adapter(adapter_id: str):
+    """특정 LoRA 어댑터를 삭제합니다"""
+    try:
+        integrated_manager = get_integrated_lora_manager()
+        
+        if adapter_id in integrated_manager.adapter_registry.adapters:
+            del integrated_manager.adapter_registry.adapters[adapter_id]
+            if adapter_id in integrated_manager.adapter_registry.adapter_profiles:
+                del integrated_manager.adapter_registry.adapter_profiles[adapter_id]
+            
+            return {
+                "status": "success",
+                "message": "어댑터 삭제 완료",
+                "adapter_id": adapter_id,
+                "timestamp": time.time()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="어댑터를 찾을 수 없습니다")
+            
+    except Exception as e:
+        logger.error(f"어댑터 삭제 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"어댑터 삭제 실패: {str(e)}")
+
+@app.delete("/lora/clear-all-adapters")
+def clear_all_lora_adapters():
+    """모든 LoRA 어댑터를 삭제합니다"""
+    try:
+        integrated_manager = get_integrated_lora_manager()
+        
+        # 모든 어댑터 삭제
+        integrated_manager.adapter_registry.adapters.clear()
+        integrated_manager.adapter_registry.adapter_profiles.clear()
+        integrated_manager.adapter_registry.user_profiles.clear()
+        
+        # 통계 초기화
+        integrated_manager.request_count = 0
+        integrated_manager.adaptation_count = 0
+        
+        return {
+            "status": "success",
+            "message": "모든 어댑터 삭제 완료",
+            "deleted_count": "all",
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"모든 어댑터 삭제 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"모든 어댑터 삭제 실패: {str(e)}")
+
+@app.get("/lora/dashboard")
+def get_lora_dashboard():
+    """LoRA 관리 대시보드를 제공합니다"""
+    return FileResponse("advanced_search/lora_management_dashboard.html")
 
 if __name__ == "__main__":
     import uvicorn

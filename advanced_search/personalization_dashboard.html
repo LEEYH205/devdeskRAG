@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevDesk-RAG v2.2.0 - 개인화 검색 대시보드</title>
+    <title>DevDesk-RAG v2.3.0 - 개인화 검색 대시보드</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -35,7 +36,7 @@
         .header h1 {
             font-size: 2.5rem;
             margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .header p {
@@ -54,13 +55,13 @@
             background: white;
             border-radius: 15px;
             padding: 25px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
         }
 
         .card h3 {
@@ -133,7 +134,7 @@
             border-radius: 15px;
             padding: 25px;
             margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
 
         .form-group {
@@ -220,7 +221,7 @@
             border-radius: 50%;
             font-size: 1.5rem;
             cursor: pointer;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
             transition: transform 0.3s ease;
         }
 
@@ -232,22 +233,23 @@
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .stats-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .header h1 {
                 font-size: 2rem;
             }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
             <h1>🔍 개인화 검색 대시보드</h1>
-            <p>DevDesk-RAG v2.2.0 - 사용자 행동 분석 및 개인화 검색 모니터링</p>
+            <p>DevDesk-RAG v2.3.0 - 사용자 행동 분석 및 개인화 검색 모니터링</p>
         </div>
 
         <!-- 검색 및 테스트 폼 -->
@@ -355,7 +357,7 @@
         let userBehaviors = [];
 
         // 페이지 로드 시 데이터 초기화
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             refreshAllData();
         });
 
@@ -368,10 +370,10 @@
                     loadUserBehaviors(),
                     loadStatistics()
                 ]);
-                
+
                 updateCharts();
                 updateTables();
-                
+
             } catch (error) {
                 console.error('데이터 새로고침 실패:', error);
                 showError('데이터를 불러오는 중 오류가 발생했습니다.');
@@ -491,7 +493,7 @@
             });
 
             const ctx = document.getElementById('behaviorChart').getContext('2d');
-            
+
             if (window.behaviorChart) {
                 window.behaviorChart.destroy();
             }
@@ -550,7 +552,7 @@
         // 사용자 프로필 테이블
         function updateUserProfilesTable() {
             const container = document.getElementById('userProfilesTable');
-            
+
             if (userProfiles.length === 0) {
                 container.innerHTML = '<div class="loading">사용자 프로필 데이터가 없습니다.</div>';
                 return;
@@ -591,7 +593,7 @@
         // 검색 세션 테이블
         function updateSearchSessionsTable() {
             const container = document.getElementById('searchSessionsTable');
-            
+
             if (searchSessions.length === 0) {
                 container.innerHTML = '<div class="loading">검색 세션 데이터가 없습니다.</div>';
                 return;
@@ -632,7 +634,7 @@
         // 검색 컨텍스트 분석
         function analyzeSearchContext(query) {
             const queryLower = query.toLowerCase();
-            
+
             if (['api', 'function', 'class', 'method', 'algorithm', 'architecture', 'system'].some(k => queryLower.includes(k))) {
                 return 'Technical';
             } else if (['code', 'programming', 'syntax', 'bug', 'error', 'debug'].some(k => queryLower.includes(k))) {
@@ -642,7 +644,7 @@
             } else if (['reference', 'documentation', 'manual', 'specification'].some(k => queryLower.includes(k))) {
                 return 'Reference';
             }
-            
+
             return 'General';
         }
 
@@ -657,7 +659,7 @@
         async function testPersonalizedSearch() {
             const userId = document.getElementById('testUserId').value;
             const query = document.getElementById('testQuery').value;
-            
+
             if (!userId || !query) {
                 showError('사용자 ID와 검색 쿼리를 입력해주세요.');
                 return;
@@ -694,7 +696,7 @@
             const query = document.getElementById('testQuery').value;
             const documentId = document.getElementById('testDocumentId').value;
             const feedbackScore = parseFloat(document.getElementById('feedbackScore').value);
-            
+
             if (!userId || !query || !documentId) {
                 showError('모든 필드를 입력해주세요.');
                 return;
@@ -731,7 +733,7 @@
         async function trackUserBehavior() {
             const userId = document.getElementById('testUserId').value;
             const query = document.getElementById('testQuery').value;
-            
+
             if (!userId) {
                 showError('사용자 ID를 입력해주세요.');
                 return;
@@ -769,7 +771,7 @@
             successDiv.className = 'success';
             successDiv.textContent = message;
             document.querySelector('.search-form').appendChild(successDiv);
-            
+
             setTimeout(() => {
                 successDiv.remove();
             }, 3000);
@@ -781,7 +783,7 @@
             errorDiv.className = 'error';
             errorDiv.textContent = message;
             document.querySelector('.search-form').appendChild(errorDiv);
-            
+
             setTimeout(() => {
                 errorDiv.remove();
             }, 5000);
@@ -791,4 +793,5 @@
         setInterval(refreshAllData, 5 * 60 * 1000);
     </script>
 </body>
+
 </html>

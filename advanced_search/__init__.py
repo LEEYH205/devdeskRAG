@@ -35,6 +35,40 @@ from .rerank_system import (
     TogetherRerankClient
 )
 
+# LoRA 시스템
+from .dora_system import (
+    dora_system,
+    get_dora_system,
+    DoRASystem,
+    DoRAConfig,
+    WeightDecomposer,
+    LowRankAdapter,
+    DoRAAdapter,
+    DomainSpecializer
+)
+
+from .dola_system import (
+    dola_system,
+    get_dola_system,
+    DoLASystem,
+    DoLAConfig,
+    DomainAnalyzer,
+    TaskSpecializer,
+    AdaptiveLearning,
+    DoLAAdapter,
+    TaskType,
+    DomainType
+)
+
+from .integrated_lora_manager import (
+    integrated_lora_manager,
+    get_integrated_lora_manager,
+    IntegratedLoRAManager,
+    IntegratedLoRAConfig,
+    AdapterRegistry,
+    PerformanceOptimizer
+)
+
 # 개인화 검색 시스템
 from .personalized_search import (
     behavior_tracker,
@@ -47,7 +81,7 @@ from .personalized_search import (
     SearchContext
 )
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 __author__ = "DevDesk-RAG Team"
 __all__ = [
     # 고급 검색
@@ -70,6 +104,32 @@ __all__ = [
     "ContextAwareReranker",
     "FeedbackLearningReranker",
     "TogetherRerankClient",
+
+    # LoRA 시스템
+    "dora_system",
+    "get_dora_system",
+    "DoRASystem",
+    "DoRAConfig",
+    "WeightDecomposer",
+    "LowRankAdapter",
+    "DoRAAdapter",
+    "DomainSpecializer",
+    "dola_system",
+    "get_dola_system",
+    "DoLASystem",
+    "DoLAConfig",
+    "DomainAnalyzer",
+    "TaskSpecializer",
+    "AdaptiveLearning",
+    "DoLAAdapter",
+    "TaskType",
+    "DomainType",
+    "integrated_lora_manager",
+    "get_integrated_lora_manager",
+    "IntegratedLoRAManager",
+    "IntegratedLoRAConfig",
+    "AdapterRegistry",
+    "PerformanceOptimizer",
     
     # 개인화 검색
     "behavior_tracker",
