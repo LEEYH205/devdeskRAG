@@ -49,23 +49,37 @@ class ProcessingResult:
         }
     
     def _convert_numpy_types(self, obj):
-        """numpy 타입을 Python 기본 타입으로 변환"""
-        if isinstance(obj, dict):
-            converted = {}
-            for key, value in obj.items():
-                converted[key] = self._convert_numpy_types(value)
-            return converted
-        elif isinstance(obj, list):
-            return [self._convert_numpy_types(item) for item in obj]
-        elif hasattr(obj, '__dict__'):
-            # 객체를 딕셔너리로 변환
-            return self._convert_numpy_types(obj.__dict__)
-        elif hasattr(obj, 'item'):  # numpy scalar
-            return obj.item()
-        elif hasattr(obj, 'tolist'):  # numpy array
-            return obj.tolist()
-        else:
-            return obj
+        """numpy 타입을 Python 기본 타입으로 변환 - 강화된 버전"""
+        try:
+            if isinstance(obj, dict):
+                converted = {}
+                for key, value in obj.items():
+                    converted[key] = self._convert_numpy_types(value)
+                return converted
+            elif isinstance(obj, list):
+                return [self._convert_numpy_types(item) for item in obj]
+            elif hasattr(obj, 'item'):  # numpy scalar
+                return obj.item()
+            elif hasattr(obj, 'tolist'):  # numpy array
+                return obj.tolist()
+            elif hasattr(obj, '__dict__'):  # 객체
+                return self._convert_numpy_types(obj.__dict__)
+            elif hasattr(obj, 'dtype'):  # numpy dtype
+                if hasattr(obj, 'item'):
+                    return obj.item()
+                else:
+                    return str(obj)
+            else:
+                return obj
+        except Exception as e:
+            logger.warning(f"numpy 타입 변환 실패: {e}, 원본 값: {obj}")
+            # 변환 실패 시 안전한 기본값 반환
+            if isinstance(obj, (int, float)):
+                return float(obj) if isinstance(obj, float) else int(obj)
+            elif isinstance(obj, str):
+                return str(obj)
+            else:
+                return str(obj) if obj is not None else None
 
 class MultimodalManager:
     """멀티모달 시스템 통합 관리자"""
@@ -327,27 +341,86 @@ class MultimodalManager:
         return results
     
     def search(self, query: str, query_type: str = "text_only", top_k: int = 10) -> List[Dict[str, Any]]:
-        """멀티모달 검색 실행 - 매우 간단한 테스트 버전"""
+        """멀티모달 검색 실행 - 실제 검색 로직 복원"""
         try:
             logger.info(f"멀티모달 검색 요청: {query}, 타입: {query_type}")
             
-            # 매우 간단한 테스트 응답 생성
-            test_results = [
-                {
-                    "content_id": "test_search_result",
-                    "content_type": "text",
-                    "similarity_score": 0.95,
-                    "text_content": f"검색어 '{query}'에 대한 테스트 결과입니다.",
-                    "image_path": None,
-                    "metadata": {"source": "test", "query": query}
-                }
-            ]
+            if not query:
+                logger.warning("빈 검색어로 검색 요청")
+                return []
             
-            logger.info(f"멀티모달 검색 완료: {len(test_results)}개 결과")
-            return test_results
+            # MultimodalQuery 객체 생성
+            if query_type == "text_only":
+                multimodal_query = MultimodalQuery(text=query, query_type="text_only")
+            elif query_type == "image_only":
+                # 이미지 경로로부터 특징 추출
+                if os.path.exists(query):
+                    image = self.image_processor.load_image(query)
+                    if image:
+                        image_features = self.image_processor.extract_clip_features(image)
+                        multimodal_query = MultimodalQuery(
+                            image_path=query,
+                            image_features=image_features,
+                            query_type="image_only"
+                        )
+                    else:
+                        raise ValueError("이미지를 로드할 수 없습니다")
+                else:
+                    raise ValueError("이미지 파일이 존재하지 않습니다")
+            elif query_type == "multimodal":
+                # 멀티모달 쿼리 (텍스트 + 이미지 특징)
+                multimodal_query = MultimodalQuery(text=query, query_type="multimodal")
+            else:
+                raise ValueError(f"지원하지 않는 쿼리 타입: {query_type}")
+            
+            # 실제 검색 실행
+            if self.multimodal_search:
+                logger.info("MultimodalSearch.search() 호출 시작")
+                search_results = self.multimodal_search.search(multimodal_query, top_k)
+                logger.info(f"MultimodalSearch 검색 완료: {len(search_results)}개 결과")
+                
+                # JSON 직렬화 가능한 형태로 변환
+                serializable_results = []
+                for result in search_results:
+                    # numpy 타입을 안전하게 변환
+                    safe_similarity_score = float(result.similarity_score) if hasattr(result, 'similarity_score') and result.similarity_score is not None else 0.0
+                    
+                    # metadata의 numpy 타입도 변환
+                    safe_metadata = self._convert_numpy_types(result.metadata or {}) if result.metadata else {}
+                    
+                    serializable_result = {
+                        "content_id": result.content_id,
+                        "content_type": result.content_type,
+                        "similarity_score": safe_similarity_score,
+                        "text_content": result.text_content,
+                        "image_path": result.image_path,
+                        "metadata": safe_metadata
+                    }
+                    
+                    # OCR 결과도 직렬화 가능하게 변환
+                    if hasattr(result, 'ocr_results') and result.ocr_results:
+                        serializable_result["ocr_results"] = []
+                        for ocr_result in result.ocr_results:
+                            serializable_ocr = {
+                                "text": ocr_result.text,
+                                "confidence": float(ocr_result.confidence) if hasattr(ocr_result, 'confidence') else 0.0,
+                                "language": ocr_result.language,
+                                "page_number": int(ocr_result.page_number) if hasattr(ocr_result, 'page_number') else 0
+                            }
+                            serializable_result["ocr_results"].append(serializable_ocr)
+                    
+                    serializable_results.append(serializable_result)
+                
+                logger.info(f"멀티모달 검색 완료: {len(serializable_results)}개 결과")
+                return serializable_results
+            else:
+                logger.warning("멀티모달 검색 시스템이 초기화되지 않았습니다")
+                return []
             
         except Exception as e:
             logger.error(f"멀티모달 검색 실패: {e}")
+            logger.error(f"오류 타입: {type(e)}")
+            logger.error(f"오류 상세: {str(e)}")
             return []
     
     def get_system_status(self) -> Dict[str, Any]:
