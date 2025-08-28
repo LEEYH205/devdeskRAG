@@ -393,7 +393,7 @@ class FileUploadResponse(BaseModel):
 app = FastAPI(
     title="DevDesk-RAG",
     description="나만의 ChatGPT - RAG 기반 문서 Q&A 시스템",
-    version="2.3.0"
+    version="2.4.0"
 )
 
 # CORS 설정
@@ -422,7 +422,7 @@ async def get_performance_dashboard_alt():
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
-    logger.info("Starting DevDesk-RAG API v2.3.0...")
+    logger.info("Starting DevDesk-RAG API v2.4.0...")
     if not initialize_components():
         logger.error("Failed to initialize components. Check your configuration.")
         raise RuntimeError("Component initialization failed")
@@ -1092,7 +1092,7 @@ async def track_user_behavior(request: dict):
 @app.get("/")
 def root():
     return {
-        "message": "DevDesk-RAG API v2.3.0", 
+        "message": "DevDesk-RAG API v2.4.0", 
         "endpoints": ["/chat", "/chat/stream", "/upload", "/files", "/sessions", "/health", "/ui", "/config"],
         "features": ["Performance Monitoring", "Optimized RAG", "CORS Support", "Web UI", "Chat History", "Streaming Response", "File Upload"],
         "web_ui": "/ui"

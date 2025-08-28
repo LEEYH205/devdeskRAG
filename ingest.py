@@ -61,7 +61,7 @@ def load_docs():
     return docs
 
 if __name__ == "__main__":
-    print("=== DevDesk-RAG Document Ingestion v2.3.0 ===")
+    print("=== DevDesk-RAG Document Ingestion v2.4.0 ===")
     
     # 문서 로드
     print("\n1. Loading documents...")
